@@ -221,7 +221,7 @@ Satellite optical observations are vulnerable to clouds, cloud shadows, and atmo
 ### Usable Pixel Fraction Formula
 Over the clipped AOI geometry:
 
-$$\text{usable\_fraction} = \frac{\text{count}(\text{SCL} \in \{4, 5, 6\})}{\text{total\_aoi\_pixels}}$$
+$$usable\_fraction = \frac{\mathrm{count}(\mathrm{SCL} \in \{4, 5, 6\})}{total\_aoi\_pixels}$$
 
 ### Quality Gate (50% Minimum Usable Coverage)
 - **Authoritative Threshold**: `0.50` ($50\%$)
@@ -305,27 +305,31 @@ Change regions from temporal analysis are converted into prioritized investigati
 ### Operational Evidence Score Formula
 The candidate score is calculated using four bounded, normalized components:
 
-$$\text{Score} = 0.35 \times C_{\text{pers}} + 0.25 \times C_{\text{cons}} + 0.20 \times C_{\text{mag}} + 0.20 \times C_{\text{qual}}$$
+$$\mathrm{Score} = 0.35 \times C_{\mathrm{pers}} + 0.25 \times C_{\mathrm{cons}} + 0.20 \times C_{\mathrm{mag}} + 0.20 \times C_{\mathrm{qual}}$$
 
 Where all components are clamped to $[0.0, 1.0]$:
-1. **Temporal Persistence ($C_{\text{pers}}$)**:
-
-$$C_{\text{pers}} = \mathrm{clamp}(\text{persistence\_ratio}, 0.0, 1.0)$$
-
-   Measures the fraction of usable observation intervals supporting the change.
-2. **Temporal Consistency ($C_{\text{cons}}$)**:
-
-$$C_{\text{cons}} = \mathrm{clamp}(\text{temporal\_consistency}, 0.0, 1.0)$$
-
-   Measures the mean geometric IoU overlap consistency across supporting intervals.
-3. **Change Magnitude ($C_{\text{mag}}$)**:
+1. **Temporal Persistence ($C_{\mathrm{pers}}$)**:
 
 $$
-C_{\text{mag}} =
+C_{\mathrm{pers}} = \mathrm{clamp}(persistence\_ratio, 0.0, 1.0)
+$$
+
+   Measures the fraction of usable observation intervals supporting the change.
+2. **Temporal Consistency ($C_{\mathrm{cons}}$)**:
+
+$$
+C_{\mathrm{cons}} = \mathrm{clamp}(temporal\_consistency, 0.0, 1.0)
+$$
+
+   Measures the mean geometric IoU overlap consistency across supporting intervals.
+3. **Change Magnitude ($C_{\mathrm{mag}}$)**:
+
+$$
+C_{\mathrm{mag}} =
 0.60 \times
 \mathrm{clamp}
 \left(
-\frac{\Delta NDVI_{\text{mean}} - 0.20}{0.60},
+\frac{\Delta NDVI_{\mathrm{mean}} - 0.20}{0.60},
 0.0,
 1.0
 \right)
@@ -340,9 +344,11 @@ C_{\text{mag}} =
 $$
 
    Combines spectral shift magnitude and physical surface area.
-4. **Observation Quality Support ($C_{\text{qual}}$)**:
+4. **Observation Quality Support ($C_{\mathrm{qual}}$)**:
 
-$$C_{\text{qual}} = \mathrm{clamp}(\text{mean\_usable\_pixel\_fraction}, 0.0, 1.0)$$
+$$
+C_{\mathrm{qual}} = \mathrm{clamp}(mean\_usable\_pixel\_fraction, 0.0, 1.0)
+$$
 
    Reflects the atmospheric clarity and valid data support of the underlying imagery.
 
@@ -370,15 +376,15 @@ Priority reflects operational urgency, combining evidence score, physical severi
 Every candidate exposes transparent explainability factors derived from its underlying deterministic metrics:
 
 - **Positive Supporting Factors**:
-  - *Strong temporal persistence* ($C_{\text{pers}} \ge 0.70$)
-  - *High spatial tracking consistency across intervals* ($C_{\text{cons}} \ge 0.70$)
-  - *Significant physical change magnitude* ($\Delta NDVI_{\text{mean}} \ge 0.40$ or large footprint)
-  - *High observation quality support* ($C_{\text{qual}} \ge 0.70$)
+  - *Strong temporal persistence* ($C_{\mathrm{pers}} \ge 0.70$)
+  - *High spatial tracking consistency across intervals* ($C_{\mathrm{cons}} \ge 0.70$)
+  - *Significant physical change magnitude* ($\Delta NDVI_{\mathrm{mean}} \ge 0.40$ or large footprint)
+  - *High observation quality support* ($C_{\mathrm{qual}} \ge 0.70$)
 - **Limiting Factors**:
-  - *Low temporal persistence* ($C_{\text{pers}} < 0.40$)
-  - *Low spatial tracking overlap across intervals* ($C_{\text{cons}} < 0.40$)
-  - *Limited physical change magnitude* ($\Delta NDVI_{\text{mean}} < 0.20$)
-  - *Degraded observation quality support* ($C_{\text{qual}} < 0.40$)
+  - *Low temporal persistence* ($C_{\mathrm{pers}} < 0.40$)
+  - *Low spatial tracking overlap across intervals* ($C_{\mathrm{cons}} < 0.40$)
+  - *Limited physical change magnitude* ($\Delta NDVI_{\mathrm{mean}} < 0.20$)
+  - *Degraded observation quality support* ($C_{\mathrm{qual}} < 0.40$)
 
 *The system explains the strength and limitations of the observational evidence; it does not infer what human activity or natural phenomenon occurred on the ground.*
 
@@ -628,7 +634,7 @@ The user interface is designed as a **professional geospatial workstation**:
 | **3** | STAC Ingestion & Quality | AWS Earth Search client, Sentinel-2 L2A querying, SCL quality screening gate. | Completed |
 | **4** | Deterministic Detection | 10m B04/B08 NDVI calculation, $\Delta\text{NDVI} \ge 0.20$ threshold, 8-connectivity filtering. | Completed |
 | **5** | Temporal Analysis | Adjacent interval sequencing, R-tree spatial tracking, IoU $\ge 0.25$ signal matching. | Completed |
-| **6** | Candidate Triage | Deterministic triage formula ($0.35 C_{\text{pers}} + 0.25 C_{\text{cons}} + 0.20 C_{\text{mag}} + 0.20 C_{\text{qual}}$). | Completed |
+| **6** | Candidate Triage | Deterministic triage formula ($0.35 C_{\mathrm{pers}} + 0.25 C_{\mathrm{cons}} + 0.20 C_{\mathrm{mag}} + 0.20 C_{\mathrm{qual}}$). | Completed |
 | **7** | Evidence Assembly | Candidate extent extraction, Before/After alignment verification, raster preview generation. | Completed |
 | **8** | Analyst Review | Independent review table (`candidate_reviews`), `accepted`/`rejected`/`investigate` decisions. | Completed |
 | **9** | E2E Integration | Full pipeline connectivity from AOI creation to candidate review. | Completed |
