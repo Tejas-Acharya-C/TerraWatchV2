@@ -310,12 +310,12 @@ $$\text{Score} = 0.35 \times C_{\text{pers}} + 0.25 \times C_{\text{cons}} + 0.2
 Where all components are clamped to $[0.0, 1.0]$:
 1. **Temporal Persistence ($C_{\text{pers}}$)**:
 
-$$C_{\text{pers}} = \operatorname{clamp}(\text{persistence\_ratio}, 0.0, 1.0)$$
+$$C_{\text{pers}} = \mathrm{clamp}(\text{persistence\_ratio}, 0.0, 1.0)$$
 
    Measures the fraction of usable observation intervals supporting the change.
 2. **Temporal Consistency ($C_{\text{cons}}$)**:
 
-$$C_{\text{cons}} = \operatorname{clamp}(\text{temporal\_consistency}, 0.0, 1.0)$$
+$$C_{\text{cons}} = \mathrm{clamp}(\text{temporal\_consistency}, 0.0, 1.0)$$
 
    Measures the mean geometric IoU overlap consistency across supporting intervals.
 3. **Change Magnitude ($C_{\text{mag}}$)**:
@@ -323,7 +323,7 @@ $$C_{\text{cons}} = \operatorname{clamp}(\text{temporal\_consistency}, 0.0, 1.0)
 $$
 C_{\text{mag}} =
 0.60 \times
-\operatorname{clamp}
+\mathrm{clamp}
 \left(
 \frac{\Delta NDVI_{\text{mean}} - 0.20}{0.60},
 0.0,
@@ -331,7 +331,7 @@ C_{\text{mag}} =
 \right)
 +
 0.40 \times
-\operatorname{clamp}
+\mathrm{clamp}
 \left(
 \frac{Area_{m^2} - 500}{9500},
 0.0,
@@ -342,7 +342,7 @@ $$
    Combines spectral shift magnitude and physical surface area.
 4. **Observation Quality Support ($C_{\text{qual}}$)**:
 
-$$C_{\text{qual}} = \operatorname{clamp}(\text{mean\_usable\_pixel\_fraction}, 0.0, 1.0)$$
+$$C_{\text{qual}} = \mathrm{clamp}(\text{mean\_usable\_pixel\_fraction}, 0.0, 1.0)$$
 
    Reflects the atmospheric clarity and valid data support of the underlying imagery.
 
