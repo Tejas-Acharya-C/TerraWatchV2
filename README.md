@@ -310,22 +310,39 @@ $$\text{Score} = 0.35 \times C_{\text{pers}} + 0.25 \times C_{\text{cons}} + 0.2
 Where all components are clamped to $[0.0, 1.0]$:
 1. **Temporal Persistence ($C_{\text{pers}}$)**:
 
-$$C_{\text{pers}} = \text{clamp}(\text{persistence\_ratio}, 0.0, 1.0)$$
+$$C_{\text{pers}} = \operatorname{clamp}(\text{persistence\_ratio}, 0.0, 1.0)$$
 
    Measures the fraction of usable observation intervals supporting the change.
 2. **Temporal Consistency ($C_{\text{cons}}$)**:
 
-$$C_{\text{cons}} = \text{clamp}(\text{temporal\_consistency}, 0.0, 1.0)$$
+$$C_{\text{cons}} = \operatorname{clamp}(\text{temporal\_consistency}, 0.0, 1.0)$$
 
    Measures the mean geometric IoU overlap consistency across supporting intervals.
 3. **Change Magnitude ($C_{\text{mag}}$)**:
 
-$$C_{\text{mag}} = 0.60 \times \text{clamp}\left(\frac{\Delta\text{NDVI}_{\text{mean}} - 0.20}{0.60}, 0.0, 1.0\right) + 0.40 \times \text{clamp}\left(\frac{\text{Area}_{\text{m}^2} - 500}{9500}, 0.0, 1.0\right)$$
+$$
+C_{\text{mag}} =
+0.60 \times
+\operatorname{clamp}
+\left(
+\frac{\Delta NDVI_{\text{mean}} - 0.20}{0.60},
+0.0,
+1.0
+\right)
++
+0.40 \times
+\operatorname{clamp}
+\left(
+\frac{Area_{m^2} - 500}{9500},
+0.0,
+1.0
+\right)
+$$
 
    Combines spectral shift magnitude and physical surface area.
 4. **Observation Quality Support ($C_{\text{qual}}$)**:
 
-$$C_{\text{qual}} = \text{clamp}(\text{mean\_usable\_pixel\_fraction}, 0.0, 1.0)$$
+$$C_{\text{qual}} = \operatorname{clamp}(\text{mean\_usable\_pixel\_fraction}, 0.0, 1.0)$$
 
    Reflects the atmospheric clarity and valid data support of the underlying imagery.
 
@@ -355,12 +372,12 @@ Every candidate exposes transparent explainability factors derived from its unde
 - **Positive Supporting Factors**:
   - *Strong temporal persistence* ($C_{\text{pers}} \ge 0.70$)
   - *High spatial tracking consistency across intervals* ($C_{\text{cons}} \ge 0.70$)
-  - *Significant physical change magnitude* ($\Delta\text{NDVI}_{\text{mean}} \ge 0.40$ or large footprint)
+  - *Significant physical change magnitude* ($\Delta NDVI_{\text{mean}} \ge 0.40$ or large footprint)
   - *High observation quality support* ($C_{\text{qual}} \ge 0.70$)
 - **Limiting Factors**:
   - *Low temporal persistence* ($C_{\text{pers}} < 0.40$)
   - *Low spatial tracking overlap across intervals* ($C_{\text{cons}} < 0.40$)
-  - *Limited physical change magnitude* ($\Delta\text{NDVI}_{\text{mean}} < 0.20$)
+  - *Limited physical change magnitude* ($\Delta NDVI_{\text{mean}} < 0.20$)
   - *Degraded observation quality support* ($C_{\text{qual}} < 0.40$)
 
 *The system explains the strength and limitations of the observational evidence; it does not infer what human activity or natural phenomenon occurred on the ground.*
