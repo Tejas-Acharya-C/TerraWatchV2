@@ -483,8 +483,10 @@ describe('Stage 06 / EVIDENCE Simplification (Phase 8)', () => {
     fireEvent.click(runBtn)
     await waitFor(() => expect(screen.getByTestId('orchestration-summary')).toBeInTheDocument())
 
-    // Navigate to Stage 05 CANDIDATES via in-stage button
-    fireEvent.click(screen.getByTestId('proceed-to-candidates-btn'))
+    // Navigate sequentially: Stage 03 -> Stage 04 -> Stage 05
+    fireEvent.click(screen.getByTestId('proceed-to-history-btn'))
+    await waitFor(() => expect(screen.getByText('04 / Change history')).toBeInTheDocument())
+    fireEvent.click(screen.getByTestId('temporal-proceed-candidates-btn'))
     await waitFor(() => expect(screen.getByText('05 / Candidates')).toBeInTheDocument())
   }
 
@@ -531,29 +533,23 @@ describe('Stage 06 / EVIDENCE Simplification (Phase 8)', () => {
     })
   })
 
-  it('4. No candidate selected produces a clear prerequisite state', async () => {
+  it('4. No candidate selected produces a clear prerequisite state and disables Next', async () => {
     await navigateToCandidatesWorkflow()
-    // Navigate directly to Stage 06 without selecting a candidate via in-stage button
-    fireEvent.click(screen.getByTestId('inspect-evidence-unselected-btn'))
-
-    await waitFor(() => {
-      expect(screen.getByText('No candidate is currently selected for evidence inspection. Select a candidate in Stage 05 / CANDIDATES.')).toBeInTheDocument()
-      expect(screen.getByRole('button', { name: 'Select candidate in Stage 05 / CANDIDATES' })).toBeInTheDocument()
-    })
+    const nextBtn = screen.getByTestId('proceed-to-evidence-btn')
+    expect(nextBtn).toBeDisabled()
+    expect(screen.getByText('Select a candidate to continue.')).toBeInTheDocument()
   })
 
-  it('5. No automatic candidate selection occurs on entering Stage 06', async () => {
+  it('5. No automatic candidate selection occurs on entering Stage 05', async () => {
     await navigateToCandidatesWorkflow()
     fireEvent.click(screen.getByRole('button', { name: 'Triage temporal signals' }))
     await waitFor(() => expect(screen.getByText('#1 / urgent priority')).toBeInTheDocument())
 
-    // Directly click unselected evidence button without clicking a candidate card
-    fireEvent.click(screen.getByTestId('inspect-evidence-unselected-btn'))
-
-    await waitFor(() => {
-      expect(screen.getByText(/No candidate is currently selected/i)).toBeInTheDocument()
-      expect(screen.queryByRole('heading', { level: 4, name: /Candidate #/i })).not.toBeInTheDocument()
-    })
+    // No candidate auto-selected, Next button remains disabled
+    const nextBtn = screen.getByTestId('proceed-to-evidence-btn')
+    expect(nextBtn).toBeDisabled()
+    expect(screen.getByTestId('map-selected-id')).toHaveTextContent('none')
+    expect(screen.queryByRole('heading', { level: 4, name: /Candidate #/i })).not.toBeInTheDocument()
   })
 
   it('6. No candidates[0] hardcoding is used; second candidate can be selected', async () => {
@@ -561,7 +557,7 @@ describe('Stage 06 / EVIDENCE Simplification (Phase 8)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Triage temporal signals' }))
     await waitFor(() => expect(screen.getByText('#2 / normal priority')).toBeInTheDocument())
     fireEvent.click(screen.getByText('#2 / normal priority'))
-    fireEvent.click(screen.getByRole('button', { name: 'Inspect candidate evidence' }))
+    fireEvent.click(screen.getByTestId('proceed-to-evidence-btn'))
 
     await waitFor(() => {
       expect(screen.getByRole('heading', { level: 4, name: 'Candidate #2 — Normal priority' })).toBeInTheDocument()
@@ -574,7 +570,7 @@ describe('Stage 06 / EVIDENCE Simplification (Phase 8)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Triage temporal signals' }))
     await waitFor(() => expect(screen.getByText('#2 / normal priority')).toBeInTheDocument())
     fireEvent.click(screen.getByText('#2 / normal priority'))
-    fireEvent.click(screen.getByRole('button', { name: 'Inspect candidate evidence' }))
+    fireEvent.click(screen.getByTestId('proceed-to-evidence-btn'))
 
     await waitFor(() => {
       expect(screen.getByTestId('evidence-candidate-id')).toHaveTextContent('analysis-42-signal-102')
@@ -586,7 +582,7 @@ describe('Stage 06 / EVIDENCE Simplification (Phase 8)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Triage temporal signals' }))
     await waitFor(() => expect(screen.getByText('#1 / urgent priority')).toBeInTheDocument())
     fireEvent.click(screen.getByText('#1 / urgent priority'))
-    fireEvent.click(screen.getByRole('button', { name: 'Inspect candidate evidence' }))
+    fireEvent.click(screen.getByTestId('proceed-to-evidence-btn'))
 
     await waitFor(() => {
       expect(screen.getByTestId('evidence-candidate-id')).toHaveTextContent('analysis-42-signal-101')
@@ -599,14 +595,14 @@ describe('Stage 06 / EVIDENCE Simplification (Phase 8)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Triage temporal signals' }))
     await waitFor(() => expect(screen.getByText('#1 / urgent priority')).toBeInTheDocument())
     fireEvent.click(screen.getByText('#1 / urgent priority'))
-    fireEvent.click(screen.getByRole('button', { name: 'Inspect candidate evidence' }))
+    fireEvent.click(screen.getByTestId('proceed-to-evidence-btn'))
     await waitFor(() => expect(screen.getByRole('heading', { level: 4, name: 'Candidate #1 — Urgent priority' })).toBeInTheDocument())
 
-    // Return to triage and select candidate 2
-    fireEvent.click(screen.getByRole('button', { name: '← Back to triage' }))
+    // Return to Stage 05 via Previous button and select candidate 2
+    fireEvent.click(screen.getByTestId('back-to-candidates-btn'))
     await waitFor(() => expect(screen.getByText('#2 / normal priority')).toBeInTheDocument())
     fireEvent.click(screen.getByText('#2 / normal priority'))
-    fireEvent.click(screen.getByRole('button', { name: 'Inspect candidate evidence' }))
+    fireEvent.click(screen.getByTestId('proceed-to-evidence-btn'))
 
     await waitFor(() => {
       expect(screen.getByRole('heading', { level: 4, name: 'Candidate #2 — Normal priority' })).toBeInTheDocument()
@@ -851,8 +847,17 @@ describe('Stage 06 / EVIDENCE Simplification (Phase 8)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Inspect candidate evidence' }))
     await waitFor(() => expect(screen.getByRole('heading', { level: 4, name: 'Candidate #1 — Urgent priority' })).toBeInTheDocument())
 
-    // Go to Stage 01 and draw area via in-stage button
+    // Go to Stage 01 via sequential Previous navigation
+    fireEvent.click(screen.getByTestId('back-to-candidates-btn'))
+    await waitFor(() => expect(screen.getByText('05 / Candidates')).toBeInTheDocument())
+    fireEvent.click(screen.getByTestId('back-to-history-btn'))
+    await waitFor(() => expect(screen.getByText('04 / Change history')).toBeInTheDocument())
+    fireEvent.click(screen.getByTestId('back-to-changes-btn'))
+    await waitFor(() => expect(screen.getByText('03 / Changes')).toBeInTheDocument())
+    fireEvent.click(screen.getByTestId('back-to-observations-btn'))
+    await waitFor(() => expect(screen.getByText('02 / Observations')).toBeInTheDocument())
     fireEvent.click(screen.getByTestId('back-to-area-btn'))
+    await waitFor(() => expect(screen.getByText('01 / Area')).toBeInTheDocument())
     fireEvent.click(screen.getByRole('button', { name: 'Draw area' }))
 
     // Evidence should be cleared and Stage 06 locked
@@ -867,9 +872,16 @@ describe('Stage 06 / EVIDENCE Simplification (Phase 8)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Inspect candidate evidence' }))
     await waitFor(() => expect(screen.getByRole('heading', { level: 4, name: 'Candidate #1 — Urgent priority' })).toBeInTheDocument())
 
-    // Go to Stage 02 via in-stage buttons
-    fireEvent.click(screen.getByTestId('back-to-area-btn'))
-    fireEvent.click(screen.getByTestId('proceed-to-observations-btn'))
+    // Go to Stage 02 via sequential Previous navigation
+    fireEvent.click(screen.getByTestId('back-to-candidates-btn'))
+    await waitFor(() => expect(screen.getByText('05 / Candidates')).toBeInTheDocument())
+    fireEvent.click(screen.getByTestId('back-to-history-btn'))
+    await waitFor(() => expect(screen.getByText('04 / Change history')).toBeInTheDocument())
+    fireEvent.click(screen.getByTestId('back-to-changes-btn'))
+    await waitFor(() => expect(screen.getByText('03 / Changes')).toBeInTheDocument())
+    fireEvent.click(screen.getByTestId('back-to-observations-btn'))
+    await waitFor(() => expect(screen.getByText('02 / Observations')).toBeInTheDocument())
+
     // Change date and acquire
     fireEvent.change(screen.getByLabelText('Observation start date'), { target: { value: '2024-01-01' } })
     fireEvent.change(screen.getByLabelText('Observation end date'), { target: { value: '2024-03-31' } })
@@ -889,10 +901,13 @@ describe('Stage 06 / EVIDENCE Simplification (Phase 8)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Inspect candidate evidence' }))
     await waitFor(() => expect(screen.getByRole('heading', { level: 4, name: 'Candidate #1 — Urgent priority' })).toBeInTheDocument())
 
-    // Go to Stage 03 via in-stage buttons and re-run analysis
-    fireEvent.click(screen.getByTestId('back-to-area-btn'))
-    fireEvent.click(screen.getByTestId('proceed-to-observations-btn'))
-    fireEvent.click(screen.getByTestId('proceed-to-changes-btn'))
+    // Go to Stage 03 via sequential Previous navigation and re-run analysis
+    fireEvent.click(screen.getByTestId('back-to-candidates-btn'))
+    await waitFor(() => expect(screen.getByText('05 / Candidates')).toBeInTheDocument())
+    fireEvent.click(screen.getByTestId('back-to-history-btn'))
+    await waitFor(() => expect(screen.getByText('04 / Change history')).toBeInTheDocument())
+    fireEvent.click(screen.getByTestId('back-to-changes-btn'))
+    await waitFor(() => expect(screen.getByText('03 / Changes')).toBeInTheDocument())
     fireEvent.click(screen.getByTestId('run-automated-analysis-btn'))
 
     // Downstream selected candidate and evidence are cleared
@@ -909,7 +924,15 @@ describe('Stage 06 / EVIDENCE Simplification (Phase 8)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Inspect candidate evidence' }))
     await waitFor(() => expect(screen.getByRole('heading', { level: 4, name: 'Candidate #1 — Urgent priority' })).toBeInTheDocument())
 
-    // Go to Stage 01 and start drawing new area via in-stage button
+    // Go to Stage 01 via sequential Previous navigation and start drawing new area
+    fireEvent.click(screen.getByTestId('back-to-candidates-btn'))
+    await waitFor(() => expect(screen.getByText('05 / Candidates')).toBeInTheDocument())
+    fireEvent.click(screen.getByTestId('back-to-history-btn'))
+    await waitFor(() => expect(screen.getByText('04 / Change history')).toBeInTheDocument())
+    fireEvent.click(screen.getByTestId('back-to-changes-btn'))
+    await waitFor(() => expect(screen.getByText('03 / Changes')).toBeInTheDocument())
+    fireEvent.click(screen.getByTestId('back-to-observations-btn'))
+    await waitFor(() => expect(screen.getByText('02 / Observations')).toBeInTheDocument())
     fireEvent.click(screen.getByTestId('back-to-area-btn'))
     await waitFor(() => expect(screen.getByText('01 / Area')).toBeInTheDocument())
     fireEvent.click(screen.getByRole('button', { name: 'Draw area' }))
@@ -926,8 +949,9 @@ describe('Stage 06 / EVIDENCE Simplification (Phase 8)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Inspect candidate evidence' }))
     await waitFor(() => expect(screen.getByRole('heading', { level: 4, name: 'Candidate #1 — Urgent priority' })).toBeInTheDocument())
 
-    // Go to Stage 05 and re-triage via in-stage button
-    fireEvent.click(screen.getByRole('button', { name: '← Back to triage' }))
+    // Go to Stage 05 via Previous button and re-triage
+    fireEvent.click(screen.getByTestId('back-to-candidates-btn'))
+    await waitFor(() => expect(screen.getByText('05 / Candidates')).toBeInTheDocument())
     fireEvent.click(screen.getByRole('button', { name: 'Triage temporal signals' }))
 
     // Stage 06 evidence is cleared
@@ -944,15 +968,15 @@ describe('Stage 06 / EVIDENCE Simplification (Phase 8)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Inspect candidate evidence' }))
     await waitFor(() => expect(screen.getByRole('heading', { level: 4, name: 'Candidate #1 — Urgent priority' })).toBeInTheDocument())
 
-    // Return to Stage 05
-    fireEvent.click(screen.getByRole('button', { name: '← Back to triage' }))
+    // Return to Stage 05 via Previous button
+    fireEvent.click(screen.getByTestId('back-to-candidates-btn'))
     await waitFor(() => expect(screen.getByText('#2 / normal priority')).toBeInTheDocument())
 
     // Select candidate 2
     fireEvent.click(screen.getByText('#2 / normal priority'))
 
-    // Go to Stage 06 via button
-    fireEvent.click(screen.getByRole('button', { name: 'Inspect candidate evidence' }))
+    // Go to Stage 06 via Next button
+    fireEvent.click(screen.getByTestId('proceed-to-evidence-btn'))
 
     // Stage 06 displays Candidate #2
     await waitFor(() => {

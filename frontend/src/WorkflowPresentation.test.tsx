@@ -37,7 +37,7 @@ describe('Workflow Presentation Simplification (Phase 2)', () => {
     sessionStorage.clear()
   })
 
-  it('1. Seven underlying workflow stages exist in Phase 9', () => {
+  it('1. Eight underlying workflow stages exist in Phase 9/10 restructuring', () => {
     expect(STAGE_ORDER).toEqual([
       'AOI',
       'IMAGERY',
@@ -46,10 +46,11 @@ describe('Workflow Presentation Simplification (Phase 2)', () => {
       'CANDIDATES',
       'EVIDENCE',
       'REVIEW',
+      'EXPORT',
     ])
   })
 
-  it('2. User-facing stage labels are AREA, OBSERVATIONS, CHANGES, CHANGE HISTORY, CANDIDATES, EVIDENCE, REVIEW', () => {
+  it('2. User-facing stage labels are AREA, OBSERVATIONS, CHANGES, CHANGE HISTORY, CANDIDATES, EVIDENCE, REVIEW, EXPORT', () => {
     expect(STAGE_TITLES).toEqual({
       AOI: 'AREA',
       IMAGERY: 'OBSERVATIONS',
@@ -58,6 +59,7 @@ describe('Workflow Presentation Simplification (Phase 2)', () => {
       CANDIDATES: 'CANDIDATES',
       EVIDENCE: 'EVIDENCE',
       REVIEW: 'REVIEW',
+      EXPORT: 'EXPORT',
     })
   })
 
@@ -469,8 +471,10 @@ describe('Workflow Presentation Simplification (Phase 2)', () => {
       await waitFor(() => expect(screen.getByTestId('orchestration-summary')).toBeInTheDocument())
       if (targetStage === 'CHANGES') return
 
-      // Go to CANDIDATES via stage content button
-      fireEvent.click(screen.getByTestId('proceed-to-candidates-btn'))
+      // Go to CANDIDATES via sequential navigation (Stage 03 -> Stage 04 -> Stage 05)
+      fireEvent.click(screen.getByTestId('proceed-to-history-btn'))
+      await waitFor(() => expect(screen.getByText('04 / Change history')).toBeInTheDocument())
+      fireEvent.click(screen.getByTestId('temporal-proceed-candidates-btn'))
       await waitFor(() => expect(screen.getByText('05 / Candidates')).toBeInTheDocument())
 
       fireEvent.click(screen.getByRole('button', { name: 'Triage temporal signals' }))
@@ -493,8 +497,8 @@ describe('Workflow Presentation Simplification (Phase 2)', () => {
     }
 
   describe('Phase 11: Terminology Cleanup & Consistency', () => {
-    it('11. All seven stage titles remain canonical in STAGE_TITLES and workflow rail', () => {
-      expect(STAGE_ORDER).toEqual(['AOI', 'IMAGERY', 'CHANGE', 'TEMPORAL', 'CANDIDATES', 'EVIDENCE', 'REVIEW'])
+    it('11. All eight stage titles remain canonical in STAGE_TITLES and workflow rail', () => {
+      expect(STAGE_ORDER).toEqual(['AOI', 'IMAGERY', 'CHANGE', 'TEMPORAL', 'CANDIDATES', 'EVIDENCE', 'REVIEW', 'EXPORT'])
       expect(STAGE_TITLES).toEqual({
         AOI: 'AREA',
         IMAGERY: 'OBSERVATIONS',
@@ -503,6 +507,7 @@ describe('Workflow Presentation Simplification (Phase 2)', () => {
         CANDIDATES: 'CANDIDATES',
         EVIDENCE: 'EVIDENCE',
         REVIEW: 'REVIEW',
+        EXPORT: 'EXPORT',
       })
     })
 
@@ -632,7 +637,7 @@ describe('Workflow Presentation Simplification (Phase 2)', () => {
       expect(screen.getByTestId('record-review-decision-btn')).toBeInTheDocument()
     })
 
-    it('22. Stage 07 Review workstation displays decision controls, note container, save action, and export section', async () => {
+    it('22. Stage 07 Review workstation displays decision controls, note container, and save action', async () => {
       await navigateToStage('REVIEW')
       // Candidate context card
       expect(screen.getByTestId('review-candidate-context')).toBeInTheDocument()
@@ -653,8 +658,8 @@ describe('Workflow Presentation Simplification (Phase 2)', () => {
       // Supporting evidence summary
       expect(screen.getByTestId('review-evidence-summary')).toBeInTheDocument()
 
-      // Export section
-      expect(screen.getByTestId('investigation-export-section')).toBeInTheDocument()
+      // Export section removed from Stage 07 (dedicated to Stage 08)
+      expect(screen.queryByTestId('investigation-export-section')).not.toBeInTheDocument()
     })
 
     it('23. Empty state in Stage 06/07 guides analyst without breaking workstation layout', async () => {
@@ -677,30 +682,24 @@ describe('Workflow Presentation Simplification (Phase 2)', () => {
       fireEvent.click(runBtn)
       await waitFor(() => expect(screen.getByTestId('orchestration-summary')).toBeInTheDocument())
 
-      // Go to CANDIDATES
-      fireEvent.click(screen.getByTestId('proceed-to-candidates-btn'))
+      // Go to CANDIDATES via sequential navigation
+      fireEvent.click(screen.getByTestId('proceed-to-history-btn'))
+      await waitFor(() => expect(screen.getByText('04 / Change history')).toBeInTheDocument())
+      fireEvent.click(screen.getByTestId('temporal-proceed-candidates-btn'))
       await waitFor(() => expect(screen.getByText('05 / Candidates')).toBeInTheDocument())
 
       // Triage candidates in Stage 05 (candidates list loads, but none is selected)
       fireEvent.click(screen.getByRole('button', { name: 'Triage temporal signals' }))
       await waitFor(() => expect(screen.getByText('#1 / urgent priority')).toBeInTheDocument())
 
-      // Navigate to EVIDENCE without candidate selection via in-stage button
-      fireEvent.click(screen.getByTestId('inspect-evidence-unselected-btn'))
-      await waitFor(() => expect(screen.getByTestId('no-candidate-state')).toBeInTheDocument())
+      // When no candidate is selected, Next button is disabled with requirement hint
+      const nextBtn = screen.getByTestId('proceed-to-evidence-btn')
+      expect(nextBtn).toBeDisabled()
+      expect(screen.getByText('Select a candidate to continue.')).toBeInTheDocument()
 
-      // Informative guidance text and button to Stage 05
-      expect(screen.getByText(/No candidate selected/i)).toBeInTheDocument()
-      expect(screen.getByRole('button', { name: /Select candidate in Stage 05/i })).toBeInTheDocument()
-
-      // Return to Stage 05 via content button
-      fireEvent.click(screen.getByRole('button', { name: /Select candidate in Stage 05/i }))
-      await waitFor(() => expect(screen.getByText('05 / Candidates')).toBeInTheDocument())
-
-      // Navigate to Review without selecting candidate via in-stage button
-      fireEvent.click(screen.getByTestId('inspect-review-unselected-btn'))
-      await waitFor(() => expect(screen.getByTestId('no-candidate-review-state')).toBeInTheDocument())
-      expect(screen.getByRole('button', { name: /Select candidate in Stage 05/i })).toBeInTheDocument()
+      // When a candidate is explicitly selected, Next becomes enabled
+      fireEvent.click(screen.getByText('#1 / urgent priority'))
+      expect(screen.getByTestId('proceed-to-evidence-btn')).not.toBeDisabled()
     })
 
     it('24. Phase 11 scientific accuracy and terminology protections remain fully preserved in Phase 12', async () => {

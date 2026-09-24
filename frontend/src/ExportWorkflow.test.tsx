@@ -437,6 +437,20 @@ describe('Phase 10 — EXPORT Workflow', () => {
       if (url.includes('/api/v1/candidates/') && url.includes('/review')) {
         const match = url.match(/\/candidates\/([^/]+)\/review/)
         const cid = match ? decodeURIComponent(match[1]) : ''
+        const method = init?.method ?? 'GET'
+
+        if (method === 'PATCH') {
+          const body = JSON.parse(init?.body as string)
+          const saved: CandidateReview = {
+            candidate_id: cid,
+            decision: body.decision,
+            note: body.note ?? null,
+            created_at: reviewsDb[cid]?.created_at ?? '2024-02-01T10:00:00Z',
+            updated_at: '2024-02-01T10:05:00Z',
+          }
+          reviewsDb[cid] = saved
+          return Promise.resolve(new Response(JSON.stringify(saved), { status: 200 }))
+        }
 
         if (reviewsDb[cid]) {
           return Promise.resolve(new Response(JSON.stringify(reviewsDb[cid]), { status: 200 }))
@@ -507,24 +521,39 @@ describe('Phase 10 — EXPORT Workflow', () => {
     fireEvent.click(runBtn)
     await waitFor(() => expect(screen.getByTestId('orchestration-summary')).toBeInTheDocument())
 
-    // Navigate to Stage 05 CANDIDATES
-    const candidatesBtn = await screen.findByTestId('proceed-to-candidates-btn')
-    fireEvent.click(candidatesBtn)
+    // Navigate sequentially: Stage 03 -> Stage 04 -> Stage 05
+    fireEvent.click(screen.getByTestId('proceed-to-history-btn'))
+    await waitFor(() => expect(screen.getByText('04 / Change history')).toBeInTheDocument())
+    fireEvent.click(screen.getByTestId('temporal-proceed-candidates-btn'))
     await waitFor(() => expect(screen.getByText('05 / Candidates')).toBeInTheDocument())
   }
 
-  async function navigateToEvidenceForCandidateA() {
+  async function navigateToExportForCandidateA() {
     await navigateToCandidatesWorkflow()
     fireEvent.click(screen.getByRole('button', { name: 'Triage temporal signals' }))
     await waitFor(() => expect(screen.getByText('#1 / urgent priority')).toBeInTheDocument())
     fireEvent.click(screen.getByText('#1 / urgent priority'))
-    fireEvent.click(screen.getByRole('button', { name: 'Inspect candidate evidence' }))
+    fireEvent.click(screen.getByTestId('proceed-to-evidence-btn'))
     await waitFor(() => expect(screen.getByText('06 / Evidence')).toBeInTheDocument())
+    fireEvent.click(screen.getByTestId('record-review-decision-btn'))
+    await waitFor(() => expect(screen.getByText('07 / Review')).toBeInTheDocument())
+    fireEvent.click(screen.getByTestId('decision-accepted-radio'))
+    fireEvent.click(screen.getByTestId('save-review-btn'))
+    await waitFor(() => expect(screen.getByTestId('review-save-success')).toBeInTheDocument())
+    fireEvent.click(screen.getByTestId('proceed-to-export-btn'))
+    await waitFor(() => expect(screen.getByText('08 / Export')).toBeInTheDocument())
     await screen.findByTestId('investigation-export-section')
   }
 
+  const navigateToEvidenceForCandidateA = navigateToExportForCandidateA
+
   async function navigateToReviewForCandidateA() {
-    await navigateToEvidenceForCandidateA()
+    await navigateToCandidatesWorkflow()
+    fireEvent.click(screen.getByRole('button', { name: 'Triage temporal signals' }))
+    await waitFor(() => expect(screen.getByText('#1 / urgent priority')).toBeInTheDocument())
+    fireEvent.click(screen.getByText('#1 / urgent priority'))
+    fireEvent.click(screen.getByTestId('proceed-to-evidence-btn'))
+    await waitFor(() => expect(screen.getByText('06 / Evidence')).toBeInTheDocument())
     fireEvent.click(screen.getByTestId('record-review-decision-btn'))
     await waitFor(() => expect(screen.getByText('07 / Review')).toBeInTheDocument())
     await screen.findByTestId('analyst-review-section')
@@ -533,11 +562,7 @@ describe('Phase 10 — EXPORT Workflow', () => {
   it('1. JSON export succeeds for a valid selected candidate', async () => {
     await navigateToEvidenceForCandidateA()
 
-    const jsonRadio = screen.getByTestId('export-format-json')
-    fireEvent.click(jsonRadio)
-
-    const exportBtn = screen.getByTestId('export-investigation-btn')
-    expect(exportBtn).toHaveTextContent('Export JSON')
+    const exportBtn = screen.getByTestId('download-json-data-btn')
     fireEvent.click(exportBtn)
 
     await waitFor(() => {
@@ -550,11 +575,7 @@ describe('Phase 10 — EXPORT Workflow', () => {
   it('2. PDF export succeeds for a valid selected candidate', async () => {
     await navigateToEvidenceForCandidateA()
 
-    const pdfRadio = screen.getByTestId('export-format-pdf')
-    fireEvent.click(pdfRadio)
-
-    const exportBtn = screen.getByTestId('export-investigation-btn')
-    expect(exportBtn).toHaveTextContent('Export PDF')
+    const exportBtn = screen.getByTestId('download-pdf-report-btn')
     fireEvent.click(exportBtn)
 
     await waitFor(() => {
@@ -567,7 +588,7 @@ describe('Phase 10 — EXPORT Workflow', () => {
   it('3. Authoritative candidate identity is used in endpoint and filename', async () => {
     await navigateToEvidenceForCandidateA()
 
-    const exportBtn = screen.getByTestId('export-investigation-btn')
+    const exportBtn = screen.getByTestId('download-pdf-report-btn')
     fireEvent.click(exportBtn)
 
     await waitFor(() => {
@@ -579,9 +600,7 @@ describe('Phase 10 — EXPORT Workflow', () => {
   it('4. Review state representation: accurately reflects unreviewed and rejected states', async () => {
     await navigateToEvidenceForCandidateA()
 
-    const jsonRadio = screen.getByTestId('export-format-json')
-    fireEvent.click(jsonRadio)
-    const exportBtn = screen.getByTestId('export-investigation-btn')
+    const exportBtn = screen.getByTestId('download-json-data-btn')
     fireEvent.click(exportBtn)
 
     await waitFor(() => {
@@ -589,15 +608,25 @@ describe('Phase 10 — EXPORT Workflow', () => {
     })
 
     // Return to candidates and select B
-    const triageBtn = screen.getByRole('button', { name: /Back to triage/i })
-    fireEvent.click(triageBtn)
-    await waitFor(() => expect(screen.getByText('#2 / normal priority')).toBeInTheDocument())
-    fireEvent.click(screen.getByText('#2 / normal priority'))
-
-    fireEvent.click(screen.getByRole('button', { name: 'Inspect candidate evidence' }))
+    fireEvent.click(screen.getByTestId('back-to-review-btn'))
+    await waitFor(() => expect(screen.getByText('07 / Review')).toBeInTheDocument())
+    fireEvent.click(screen.getByTestId('back-to-evidence-btn'))
     await waitFor(() => expect(screen.getByText('06 / Evidence')).toBeInTheDocument())
+    fireEvent.click(screen.getByTestId('back-to-candidates-btn'))
+    await waitFor(() => expect(screen.getByText('05 / Candidates')).toBeInTheDocument())
 
-    const exportBtnB = screen.getByTestId('export-investigation-btn')
+    fireEvent.click(screen.getByText('#2 / normal priority'))
+    fireEvent.click(screen.getByTestId('proceed-to-evidence-btn'))
+    await waitFor(() => expect(screen.getByText('06 / Evidence')).toBeInTheDocument())
+    fireEvent.click(screen.getByTestId('record-review-decision-btn'))
+    await waitFor(() => expect(screen.getByText('07 / Review')).toBeInTheDocument())
+    fireEvent.click(screen.getByTestId('decision-rejected-radio'))
+    fireEvent.click(screen.getByTestId('save-review-btn'))
+    await waitFor(() => expect(screen.getByTestId('review-save-success')).toBeInTheDocument())
+    fireEvent.click(screen.getByTestId('proceed-to-export-btn'))
+    await waitFor(() => expect(screen.getByText('08 / Export')).toBeInTheDocument())
+
+    const exportBtnB = screen.getByTestId('download-json-data-btn')
     fireEvent.click(exportBtnB)
 
     await waitFor(() => {
@@ -608,7 +637,7 @@ describe('Phase 10 — EXPORT Workflow', () => {
   it('5. Candidate switching: A export state clears when switching to B, B export targets B', async () => {
     await navigateToEvidenceForCandidateA()
 
-    const exportBtn = screen.getByTestId('export-investigation-btn')
+    const exportBtn = screen.getByTestId('download-pdf-report-btn')
     fireEvent.click(exportBtn)
 
     await waitFor(() => {
@@ -616,18 +645,28 @@ describe('Phase 10 — EXPORT Workflow', () => {
     })
 
     // Switch to Candidate B
-    const triageBtn = screen.getByRole('button', { name: /Back to triage/i })
-    fireEvent.click(triageBtn)
-    await waitFor(() => expect(screen.getByText('#2 / normal priority')).toBeInTheDocument())
+    fireEvent.click(screen.getByTestId('back-to-review-btn'))
+    await waitFor(() => expect(screen.getByText('07 / Review')).toBeInTheDocument())
+    fireEvent.click(screen.getByTestId('back-to-evidence-btn'))
+    await waitFor(() => expect(screen.getByText('06 / Evidence')).toBeInTheDocument())
+    fireEvent.click(screen.getByTestId('back-to-candidates-btn'))
+    await waitFor(() => expect(screen.getByText('05 / Candidates')).toBeInTheDocument())
     fireEvent.click(screen.getByText('#2 / normal priority'))
 
     // Check that previous success message is cleared
     expect(screen.queryByTestId('export-success-message')).not.toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Inspect candidate evidence' }))
+    fireEvent.click(screen.getByTestId('proceed-to-evidence-btn'))
     await waitFor(() => expect(screen.getByText('06 / Evidence')).toBeInTheDocument())
+    fireEvent.click(screen.getByTestId('record-review-decision-btn'))
+    await waitFor(() => expect(screen.getByText('07 / Review')).toBeInTheDocument())
+    fireEvent.click(screen.getByTestId('decision-rejected-radio'))
+    fireEvent.click(screen.getByTestId('save-review-btn'))
+    await waitFor(() => expect(screen.getByTestId('review-save-success')).toBeInTheDocument())
+    fireEvent.click(screen.getByTestId('proceed-to-export-btn'))
+    await waitFor(() => expect(screen.getByText('08 / Export')).toBeInTheDocument())
 
-    const exportBtnB = screen.getByTestId('export-investigation-btn')
+    const exportBtnB = screen.getByTestId('download-pdf-report-btn')
     fireEvent.click(exportBtnB)
 
     await waitFor(() => {
@@ -655,7 +694,7 @@ describe('Phase 10 — EXPORT Workflow', () => {
 
     await navigateToEvidenceForCandidateA()
 
-    const exportBtn = screen.getByTestId('export-investigation-btn')
+    const exportBtn = screen.getByTestId('download-pdf-report-btn')
     fireEvent.click(exportBtn)
 
     // Export is in flight
@@ -665,9 +704,12 @@ describe('Phase 10 — EXPORT Workflow', () => {
     anchorClickSpy.mockClear()
 
     // Switch to Candidate B before A resolves
-    const triageBtn = screen.getByRole('button', { name: /Back to triage/i })
-    fireEvent.click(triageBtn)
-    await waitFor(() => expect(screen.getByText('#2 / normal priority')).toBeInTheDocument())
+    fireEvent.click(screen.getByTestId('back-to-review-btn'))
+    await waitFor(() => expect(screen.getByText('07 / Review')).toBeInTheDocument())
+    fireEvent.click(screen.getByTestId('back-to-evidence-btn'))
+    await waitFor(() => expect(screen.getByText('06 / Evidence')).toBeInTheDocument())
+    fireEvent.click(screen.getByTestId('back-to-candidates-btn'))
+    await waitFor(() => expect(screen.getByText('05 / Candidates')).toBeInTheDocument())
     fireEvent.click(screen.getByText('#2 / normal priority'))
 
     // Resolve A's delayed export response now
@@ -692,27 +734,39 @@ describe('Phase 10 — EXPORT Workflow', () => {
 
     // On Candidates stage with no candidate selected
     expect(screen.queryByTestId('investigation-export-section')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('download-pdf-report-btn')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('download-json-data-btn')).not.toBeInTheDocument()
     expect(screen.queryByTestId('export-investigation-btn')).not.toBeInTheDocument()
-
-    // Go to Stage 06 EVIDENCE
-    const stageEvidence = screen.getByTestId('inspect-evidence-unselected-btn')
-    fireEvent.click(stageEvidence)
-    expect(screen.queryByTestId('investigation-export-section')).not.toBeInTheDocument()
+    expect(screen.getByLabelText(/08.*EXPORT/i)).toHaveClass('workflow-step--locked')
   })
 
   it('8. Upstream invalidation: clearing candidate or upstream stage resets export state', async () => {
     await navigateToEvidenceForCandidateA()
 
-    const exportBtn = screen.getByTestId('export-investigation-btn')
+    const exportBtn = screen.getByTestId('download-pdf-report-btn')
     fireEvent.click(exportBtn)
     await waitFor(() => {
       expect(screen.getByTestId('export-success-message')).toBeInTheDocument()
     })
 
-    // Upstream stage inspection or AOI action resets active export presentation
-    const stageAoi = screen.getByTestId('back-to-area-btn')
-    fireEvent.click(stageAoi)
+    // Invalidate upstream by navigating back to Area
+    fireEvent.click(screen.getByTestId('back-to-review-btn'))
+    await waitFor(() => expect(screen.getByText('07 / Review')).toBeInTheDocument())
+    fireEvent.click(screen.getByTestId('back-to-evidence-btn'))
+    await waitFor(() => expect(screen.getByText('06 / Evidence')).toBeInTheDocument())
+    fireEvent.click(screen.getByTestId('back-to-candidates-btn'))
+    await waitFor(() => expect(screen.getByText('05 / Candidates')).toBeInTheDocument())
+    fireEvent.click(screen.getByTestId('back-to-history-btn'))
+    await waitFor(() => expect(screen.getByText('04 / Change history')).toBeInTheDocument())
+    fireEvent.click(screen.getByTestId('back-to-changes-btn'))
+    await waitFor(() => expect(screen.getByText('03 / Changes')).toBeInTheDocument())
+    fireEvent.click(screen.getByTestId('back-to-observations-btn'))
+    await waitFor(() => expect(screen.getByText('02 / Observations')).toBeInTheDocument())
+    fireEvent.click(screen.getByTestId('back-to-area-btn'))
+    await waitFor(() => expect(screen.getByText('01 / Area')).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: 'Draw area' }))
     expect(screen.queryByTestId('investigation-export-section')).not.toBeInTheDocument()
+    expect(screen.getByLabelText(/08.*EXPORT/i)).toHaveClass('workflow-step--locked')
   })
 
   it('9. Read-only behavior: export does not make mutation requests or alter candidate fields', async () => {
@@ -729,7 +783,7 @@ describe('Phase 10 — EXPORT Workflow', () => {
     // Clear mutation calls triggered during upstream navigation setup
     mutationCalls.length = 0
 
-    const exportBtn = screen.getByTestId('export-investigation-btn')
+    const exportBtn = screen.getByTestId('download-pdf-report-btn')
     fireEvent.click(exportBtn)
 
     await waitFor(() => {
@@ -746,9 +800,7 @@ describe('Phase 10 — EXPORT Workflow', () => {
   it('10. Provenance: JSON export maintains stable IDs and contains no internal filesystem paths', async () => {
     await navigateToEvidenceForCandidateA()
 
-    const jsonRadio = screen.getByTestId('export-format-json')
-    fireEvent.click(jsonRadio)
-    const exportBtn = screen.getByTestId('export-investigation-btn')
+    const exportBtn = screen.getByTestId('download-json-data-btn')
     fireEvent.click(exportBtn)
 
     await waitFor(() => {
@@ -769,7 +821,7 @@ describe('Phase 10 — EXPORT Workflow', () => {
   it('11. No fake data: exported metadata matches real candidate and evidence values', async () => {
     await navigateToEvidenceForCandidateA()
 
-    const exportBtn = screen.getByTestId('export-investigation-btn')
+    const exportBtn = screen.getByTestId('download-pdf-report-btn')
     fireEvent.click(exportBtn)
 
     await waitFor(() => {
@@ -778,18 +830,24 @@ describe('Phase 10 — EXPORT Workflow', () => {
     expect(capturedExportUrls[0]).toContain(candidateA.candidate_id)
   })
 
-  it('12. Format selection: switching between PDF and JSON updates button text', async () => {
+  it('12. Dedicated PDF and JSON download actions function independently', async () => {
     await navigateToEvidenceForCandidateA()
 
-    expect(screen.getByTestId('export-investigation-btn')).toHaveTextContent('Export PDF')
+    const pdfBtn = screen.getByTestId('download-pdf-report-btn')
+    const jsonBtn = screen.getByTestId('download-json-data-btn')
+    expect(pdfBtn).toHaveTextContent('Download PDF Report')
+    expect(jsonBtn).toHaveTextContent('Download JSON Data')
 
-    const jsonRadio = screen.getByTestId('export-format-json')
-    fireEvent.click(jsonRadio)
-    expect(screen.getByTestId('export-investigation-btn')).toHaveTextContent('Export JSON')
+    fireEvent.click(jsonBtn)
+    await waitFor(() => {
+      expect(screen.getByTestId('export-success-message')).toBeInTheDocument()
+    })
+    expect(screen.getByTestId('export-success-message')).toHaveTextContent('terrawatch_investigation_analysis-42-signal-101.json')
 
-    const pdfRadio = screen.getByTestId('export-format-pdf')
-    fireEvent.click(pdfRadio)
-    expect(screen.getByTestId('export-investigation-btn')).toHaveTextContent('Export PDF')
+    fireEvent.click(pdfBtn)
+    await waitFor(() => {
+      expect(screen.getByTestId('export-success-message')).toHaveTextContent('terrawatch_investigation_analysis-42-signal-101.pdf')
+    })
   })
 
   it('13. Export failure: displays explicit error message and preserves workstation state', async () => {
@@ -806,7 +864,7 @@ describe('Phase 10 — EXPORT Workflow', () => {
 
     await navigateToEvidenceForCandidateA()
 
-    const exportBtn = screen.getByTestId('export-investigation-btn')
+    const exportBtn = screen.getByTestId('download-pdf-report-btn')
     fireEvent.click(exportBtn)
 
     await waitFor(() => {
@@ -815,35 +873,28 @@ describe('Phase 10 — EXPORT Workflow', () => {
     expect(screen.getByTestId('export-error-message')).toHaveTextContent('Raster artifact corrupted on disk')
     expect(screen.queryByTestId('export-success-message')).not.toBeInTheDocument()
     // Workstation state preserved
-    expect(screen.getByTestId('candidate-identity-section')).toBeInTheDocument()
+    expect(screen.getByTestId('investigation-export-section')).toBeInTheDocument()
   })
 
-  it('14. Stage 06 EVIDENCE export remains functional with all options', async () => {
-    await navigateToEvidenceForCandidateA()
+  it('14. Stage 08 EXPORT provides exactly two dedicated export actions without duplicate buttons', async () => {
+    await navigateToExportForCandidateA()
 
     expect(screen.getByTestId('investigation-export-section')).toBeInTheDocument()
-    expect(screen.getByTestId('export-format-pdf')).toBeInTheDocument()
-    expect(screen.getByTestId('export-format-json')).toBeInTheDocument()
-    expect(screen.getByTestId('export-investigation-btn')).toBeInTheDocument()
+    expect(screen.getByTestId('download-pdf-report-btn')).toBeInTheDocument()
+    expect(screen.getByTestId('download-json-data-btn')).toBeInTheDocument()
+    expect(screen.queryByTestId('export-investigation-btn')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('export-format-pdf')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('export-format-json')).not.toBeInTheDocument()
   })
 
-  it('15. Stage 07 REVIEW export is available and operational for selected candidate', async () => {
+  it('15. Stage 06 and Stage 07 do not contain duplicated export widgets', async () => {
     await navigateToReviewForCandidateA()
-
     expect(screen.getByTestId('analyst-review-section')).toBeInTheDocument()
-    const exportSection = screen.getByTestId('investigation-export-section')
-    expect(exportSection).toBeInTheDocument()
+    expect(screen.queryByTestId('investigation-export-section')).not.toBeInTheDocument()
 
-    const exportBtn = screen.getByTestId('export-investigation-btn')
-    expect(exportBtn).toBeInTheDocument()
-    expect(exportBtn).toHaveTextContent('Export PDF')
-
-    fireEvent.click(exportBtn)
-
-    await waitFor(() => {
-      expect(screen.getByTestId('export-success-message')).toBeInTheDocument()
-    })
-    expect(screen.getByTestId('export-success-message')).toHaveTextContent('Downloaded terrawatch_investigation_analysis-42-signal-101.pdf')
-    expect(capturedExportUrls.some((u) => u.includes('/candidates/analysis-42-signal-101/export?format=pdf'))).toBe(true)
+    // Check Stage 06
+    fireEvent.click(screen.getByTestId('back-to-evidence-btn'))
+    await waitFor(() => expect(screen.getByText('06 / Evidence')).toBeInTheDocument())
+    expect(screen.queryByTestId('investigation-export-section')).not.toBeInTheDocument()
   })
 })

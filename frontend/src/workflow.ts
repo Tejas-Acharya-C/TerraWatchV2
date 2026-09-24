@@ -1,7 +1,7 @@
-export type WorkflowStage = 'AOI' | 'IMAGERY' | 'CHANGE' | 'TEMPORAL' | 'CANDIDATES' | 'EVIDENCE' | 'REVIEW'
+export type WorkflowStage = 'AOI' | 'IMAGERY' | 'CHANGE' | 'TEMPORAL' | 'CANDIDATES' | 'EVIDENCE' | 'REVIEW' | 'EXPORT'
 export type StageStatus = 'locked' | 'ready' | 'running' | 'complete' | 'failed'
 
-export const STAGE_ORDER: WorkflowStage[] = ['AOI', 'IMAGERY', 'CHANGE', 'TEMPORAL', 'CANDIDATES', 'EVIDENCE', 'REVIEW']
+export const STAGE_ORDER: WorkflowStage[] = ['AOI', 'IMAGERY', 'CHANGE', 'TEMPORAL', 'CANDIDATES', 'EVIDENCE', 'REVIEW', 'EXPORT']
 
 export const STAGE_TITLES: Record<WorkflowStage, string> = {
   AOI: 'AREA',
@@ -11,4 +11,5 @@ export const STAGE_TITLES: Record<WorkflowStage, string> = {
   CANDIDATES: 'CANDIDATES',
   EVIDENCE: 'EVIDENCE',
   REVIEW: 'REVIEW',
+  EXPORT: 'EXPORT',
 }

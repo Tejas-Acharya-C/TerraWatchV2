@@ -18,9 +18,10 @@ describe('WorkflowProgressIndicator (Passive Workflow Rail - Phase 19D)', () => 
     { stage: 'CANDIDATES', label: 'CANDIDATES', status: 'locked' },
     { stage: 'EVIDENCE', label: 'EVIDENCE', status: 'locked' },
     { stage: 'REVIEW', label: 'REVIEW', status: 'locked' },
+    { stage: 'EXPORT', label: 'EXPORT', status: 'locked' },
   ]
 
-  it('1. Renders all seven workflow steps in order with step numbers', () => {
+  it('1. Renders all eight workflow steps in order with step numbers', () => {
     render(<WorkflowProgressIndicator steps={defaultSteps} currentStage="CHANGE" />)
 
     const rail = screen.getByRole('group', { name: 'Analysis workflow status' })
@@ -33,6 +34,7 @@ describe('WorkflowProgressIndicator (Passive Workflow Rail - Phase 19D)', () => 
     expect(screen.getByLabelText('05 CANDIDATES')).toBeInTheDocument()
     expect(screen.getByLabelText('06 EVIDENCE')).toBeInTheDocument()
     expect(screen.getByLabelText('07 REVIEW')).toBeInTheDocument()
+    expect(screen.getByLabelText('08 EXPORT')).toBeInTheDocument()
   })
 
   it('2. Correctly indicates the active stage with aria-current="step" and current modifier class', () => {
@@ -56,6 +58,7 @@ describe('WorkflowProgressIndicator (Passive Workflow Rail - Phase 19D)', () => 
       { stage: 'CANDIDATES', label: 'CANDIDATES', status: 'locked' },
       { stage: 'EVIDENCE', label: 'EVIDENCE', status: 'locked' },
       { stage: 'REVIEW', label: 'REVIEW', status: 'locked' },
+      { stage: 'EXPORT', label: 'EXPORT', status: 'locked' },
     ]
 
     render(<WorkflowProgressIndicator steps={variedSteps} currentStage="IMAGERY" />)

@@ -284,15 +284,24 @@ describe('TerraWatch V2 — Phase 19C: Stage 03 / CHANGES Automatic Analysis Orc
     expect(runBtn).toBeEnabled()
   })
 
-  it('4. If fewer than 2 usable observations exist, "Run automated analysis" is disabled with dependency note', async () => {
+  it('4. If fewer than 2 usable observations exist, Next to CHANGES is disabled with requirement hint', async () => {
     mockAcquisitions = [
       makeAcquisition({ acquisition_id: 1, observation_state: 'usable' }),
       makeAcquisition({ acquisition_id: 2, observation_state: 'valid_unusable' }),
     ]
-    await loadAreaAndNavigateToChanges()
-    const runBtn = screen.getByTestId('run-automated-analysis-btn')
-    expect(runBtn).toBeDisabled()
-    expect(screen.getAllByText(/at least two usable observations/i).length).toBeGreaterThan(0)
+    render(<App />)
+    fireEvent.focus(screen.getByLabelText('Saved AOIs'))
+    await waitFor(() =>
+      expect(screen.getByLabelText('Saved AOIs').querySelectorAll('option').length).toBeGreaterThan(1),
+    )
+    fireEvent.change(screen.getByLabelText('Saved AOIs'), { target: { value: '1' } })
+    await waitFor(() => expect(screen.getByTestId('proceed-to-observations-btn')).toBeInTheDocument())
+    fireEvent.click(screen.getByTestId('proceed-to-observations-btn'))
+    await waitFor(() => expect(screen.getByTestId('proceed-to-changes-btn')).toBeInTheDocument())
+
+    const nextBtn = screen.getByTestId('proceed-to-changes-btn')
+    expect(nextBtn).toBeDisabled()
+    expect(screen.getByText('At least 2 usable observations required')).toBeInTheDocument()
   })
 
   it('5. While orchestration is running, shows in-progress state and disables button', async () => {
@@ -351,19 +360,21 @@ describe('TerraWatch V2 — Phase 19C: Stage 03 / CHANGES Automatic Analysis Orc
     expect(screen.getByText('Persistent')).toBeInTheDocument()
   })
 
-  it('7. Orchestration summary provides direct navigation buttons to Candidates and Change History', async () => {
+  it('7. Orchestration summary completes and footer navigation advances sequentially to Change History', async () => {
     await loadAreaAndNavigateToChanges()
     fireEvent.click(screen.getByTestId('run-automated-analysis-btn'))
     await waitFor(() => expect(screen.getByTestId('orchestration-summary')).toBeInTheDocument())
 
-    const candidatesBtn = screen.getByTestId('proceed-to-candidates-btn')
+    // In Stage 03, footer Next advances to Stage 04 CHANGE HISTORY
+    const nextBtn = screen.getByTestId('proceed-to-history-btn')
+    expect(nextBtn).toBeInTheDocument()
+    expect(nextBtn).toBeEnabled()
+    fireEvent.click(nextBtn)
+    await waitFor(() => expect(screen.getByText('04 / Change history')).toBeInTheDocument())
+
+    // From Stage 04, footer Next advances to Stage 05 CANDIDATES
+    const candidatesBtn = screen.getByTestId('temporal-proceed-candidates-btn')
     expect(candidatesBtn).toBeInTheDocument()
-    expect(candidatesBtn).toHaveTextContent('Inspect Candidates (1) →')
-
-    const historyBtn = screen.getByTestId('view-history-btn')
-    expect(historyBtn).toBeInTheDocument()
-
-    // Clicking "Inspect Candidates" moves to stage 05 CANDIDATES
     fireEvent.click(candidatesBtn)
     await waitFor(() => expect(screen.getByText('05 / Candidates')).toBeInTheDocument())
   })

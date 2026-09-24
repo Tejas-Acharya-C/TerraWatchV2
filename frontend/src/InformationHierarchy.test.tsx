@@ -322,7 +322,7 @@ describe('TerraWatch V2 — Phase 19E: Information Hierarchy', () => {
     expect(screen.getByText('31.0 d')).toBeInTheDocument()
     expect(screen.getByText('Persistent')).toBeInTheDocument()
 
-    fireEvent.click(screen.getByTestId('view-history-btn'))
+    fireEvent.click(screen.getByTestId('proceed-to-history-btn'))
     await waitFor(() => {
       expect(screen.getByText('04 / Change history')).toBeInTheDocument()
     })
@@ -372,10 +372,11 @@ describe('TerraWatch V2 — Phase 19E: Information Hierarchy', () => {
   it('8. Upstream inspection banner clearly explains read-only state without duplicate banners', async () => {
     await loadAreaAndProceedToChanges()
     fireEvent.click(screen.getByTestId('run-automated-analysis-btn'))
-    await waitFor(() => expect(screen.getByTestId('proceed-to-candidates-btn')).toBeInTheDocument())
-    fireEvent.click(screen.getByTestId('proceed-to-candidates-btn'))
-    await waitFor(() => expect(screen.getByText('05 / Candidates')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByTestId('proceed-to-history-btn')).toBeInTheDocument())
 
+    // Navigate back to Stage 01 (AREA) sequentially
+    fireEvent.click(screen.getByTestId('back-to-observations-btn'))
+    await waitFor(() => expect(screen.getByText('02 / Observations')).toBeInTheDocument())
     fireEvent.click(screen.getByTestId('back-to-area-btn'))
     await waitFor(() => expect(screen.getByText('01 / Area')).toBeInTheDocument())
 

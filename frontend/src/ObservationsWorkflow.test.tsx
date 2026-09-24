@@ -192,20 +192,16 @@ describe('TerraWatch V2 — Simplification Phase 4: Stage 02 / OBSERVATIONS Simp
     expect(itemCard).toHaveTextContent('Unavailable for change detection')
   })
 
-  it('10. Unusable observations cannot be selected for downstream detection in CHANGES', async () => {
+  it('10. When only 1 usable observation exists, Next is disabled with requirement hint', async () => {
     const usableObs = makeAcquisition({ acquisition_id: 21, observation_state: 'usable', acquisition_datetime: '2024-01-01T00:00:00Z' })
     const unusableObs = makeAcquisition({ acquisition_id: 22, observation_state: 'valid_unusable', quality_reason: 'insufficient_usable_pixels', acquisition_datetime: '2024-02-01T00:00:00Z' })
     mockAcquisitions = [usableObs, unusableObs]
 
     await loadSavedAreaAndGoToObservations()
 
-    // Navigate to CHANGES via in-stage button
     const changeBtn = screen.getByTestId('proceed-to-changes-btn')
-    fireEvent.click(changeBtn)
-
-    const runBtn = screen.getByTestId('run-automated-analysis-btn')
-    expect(runBtn).toBeDisabled()
-    expect(screen.getByText('At least two usable observations are required for automated analysis.')).toBeInTheDocument()
+    expect(changeBtn).toBeDisabled()
+    expect(screen.getByText('At least 2 usable observations required')).toBeInTheDocument()
   })
 
   it('11. Acquired state is clearly presented on observation cards', async () => {
@@ -513,5 +509,51 @@ describe('TerraWatch V2 — Simplification Phase 4: Stage 02 / OBSERVATIONS Simp
 
     // Must NOT adopt the stale progress
     expect(screen.queryByText(/Processing observations… 15 of 25 completed/)).not.toBeInTheDocument()
+  })
+
+  describe('Stage 02 Next Prerequisite Validation', () => {
+    it('1. >=2 total observations but 0 usable -> Next disabled', async () => {
+      const unusable1 = makeAcquisition({ acquisition_id: 101, observation_state: 'valid_unusable', quality_reason: 'cloud_cover' })
+      const unusable2 = makeAcquisition({ acquisition_id: 102, observation_state: 'valid_unusable', quality_reason: 'shadow' })
+      mockAcquisitions = [unusable1, unusable2]
+
+      await loadSavedAreaAndGoToObservations()
+      const nextBtn = screen.getByTestId('proceed-to-changes-btn')
+      expect(nextBtn).toBeDisabled()
+      expect(screen.getByText('At least 2 usable observations required')).toBeInTheDocument()
+    })
+
+    it('2. >=2 total observations but only 1 usable -> Next disabled', async () => {
+      const usable = makeAcquisition({ acquisition_id: 201, observation_state: 'usable' })
+      const unusable1 = makeAcquisition({ acquisition_id: 202, observation_state: 'valid_unusable', quality_reason: 'cloud_cover' })
+      const unusable2 = makeAcquisition({ acquisition_id: 203, observation_state: 'valid_unusable', quality_reason: 'shadow' })
+      mockAcquisitions = [usable, unusable1, unusable2]
+
+      await loadSavedAreaAndGoToObservations()
+      const nextBtn = screen.getByTestId('proceed-to-changes-btn')
+      expect(nextBtn).toBeDisabled()
+      expect(screen.getByText('At least 2 usable observations required')).toBeInTheDocument()
+    })
+
+    it('3. >=2 usable observations -> Next enabled', async () => {
+      const usable1 = makeAcquisition({ acquisition_id: 301, observation_state: 'usable', acquisition_datetime: '2024-01-01T00:00:00Z' })
+      const usable2 = makeAcquisition({ acquisition_id: 302, observation_state: 'usable', acquisition_datetime: '2024-02-01T00:00:00Z' })
+      const unusable = makeAcquisition({ acquisition_id: 303, observation_state: 'valid_unusable', quality_reason: 'cloud_cover' })
+      mockAcquisitions = [usable1, usable2, unusable]
+
+      await loadSavedAreaAndGoToObservations()
+      const nextBtn = screen.getByTestId('proceed-to-changes-btn')
+      expect(nextBtn).not.toBeDisabled()
+      expect(screen.queryByText('At least 2 usable observations required')).not.toBeInTheDocument()
+    })
+
+    it('4. No observations -> Next disabled', async () => {
+      mockAcquisitions = []
+
+      await loadSavedAreaAndGoToObservations()
+      const nextBtn = screen.getByTestId('proceed-to-changes-btn')
+      expect(nextBtn).toBeDisabled()
+      expect(screen.getByText('At least 2 usable observations required')).toBeInTheDocument()
+    })
   })
 })

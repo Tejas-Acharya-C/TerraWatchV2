@@ -294,7 +294,7 @@ describe('Phase 14 — Failure-State Cleanup', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Find observations' }))
 
     await waitFor(() => expect(screen.getByText('No matching observations')).toBeInTheDocument())
-    expect(screen.getByText(/No suitable satellite observations were found/i)).toBeInTheDocument()
+    expect(screen.getByText(/No satellite observations were found/i)).toBeInTheDocument()
     expect(screen.queryByText('Observation search failed')).not.toBeInTheDocument()
 
     // 1b. Server 500 failure during acquisition -> distinct failure state

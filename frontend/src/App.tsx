@@ -29,6 +29,7 @@ import {
   type TemporalResult,
 } from './lib/api'
 import WorkflowProgressIndicator from './WorkflowProgressIndicator'
+import WorkflowNavigation from './WorkflowNavigation'
 import { isTemporalEligible } from './lib/temporalEligibility'
 import { STAGE_ORDER, STAGE_TITLES, type StageStatus, type WorkflowStage } from './workflow'
 import './App.css'
@@ -137,86 +138,7 @@ type WorkstationStatus =
 
 type StageRecord = { stage: WorkflowStage; status: StageStatus; label: string }
 
-function ExportInvestigationCard({
-  exportFormat,
-  setExportFormat,
-  exportStatus,
-  exportError,
-  lastExportedFilename,
-  selectedCandidateId,
-  onExport,
-}: {
-  exportFormat: 'pdf' | 'json'
-  setExportFormat: (fmt: 'pdf' | 'json') => void
-  exportStatus: 'idle' | 'exporting' | 'success' | 'error'
-  exportError: string
-  lastExportedFilename: string | null
-  selectedCandidateId: string
-  onExport: () => void
-}) {
-  return (
-    <div className="info-block export-investigation-card" data-testid="investigation-export-section">
-      <div className="export-section-header">
-        <div>
-          <p className="block-label">Export Candidate Snapshot</p>
-          <small className="export-subtitle">Download portable, internally consistent candidate investigation snapshot.</small>
-        </div>
-      </div>
-      <div className="export-controls-row">
-        <div className="export-format-selector" role="radiogroup" aria-label="Export format">
-          <label className={`export-format-option ${exportFormat === 'pdf' ? 'export-format-option--active' : ''}`}>
-            <input
-              type="radio"
-              name="export-format"
-              value="pdf"
-              checked={exportFormat === 'pdf'}
-              onChange={() => setExportFormat('pdf')}
-              disabled={exportStatus === 'exporting'}
-              data-testid="export-format-pdf"
-            />
-            <span>PDF Report</span>
-          </label>
-          <label className={`export-format-option ${exportFormat === 'json' ? 'export-format-option--active' : ''}`}>
-            <input
-              type="radio"
-              name="export-format"
-              value="json"
-              checked={exportFormat === 'json'}
-              onChange={() => setExportFormat('json')}
-              disabled={exportStatus === 'exporting'}
-              data-testid="export-format-json"
-            />
-            <span>JSON Data</span>
-          </label>
-        </div>
-        <button
-          type="button"
-          className="button--secondary export-btn"
-          disabled={exportStatus === 'exporting' || !selectedCandidateId}
-          onClick={onExport}
-          data-testid="export-investigation-btn"
-        >
-          {exportStatus === 'exporting' ? 'Exporting...' : `Export ${exportFormat.toUpperCase()}`}
-        </button>
-        {exportStatus === 'exporting' && (
-          <span className="export-status-text" role="status" data-testid="export-loading-indicator">
-            Generating {exportFormat.toUpperCase()} snapshot...
-          </span>
-        )}
-        {exportStatus === 'success' && (
-          <span className="export-status-text export-status-text--success" role="status" data-testid="export-success-message">
-            ✓ Downloaded {lastExportedFilename ?? `${exportFormat.toUpperCase()} report`}
-          </span>
-        )}
-        {exportStatus === 'error' && (
-          <span className="export-status-text export-status-text--error" role="alert" data-testid="export-error-message">
-            {exportError || 'Export failed'}
-          </span>
-        )}
-      </div>
-    </div>
-  )
-}
+
 
 function App() {
   const [geometry, setGeometry] = useState<AOIGeometry | null>(null)
@@ -264,6 +186,24 @@ function App() {
       return true
     })
   }, [candidates, candidatePriorityFilter, candidateSeverityFilter, candidateReviewFilter])
+
+  const [candidateViewMode, setCandidateViewMode] = useState<'top5' | 'all'>('top5')
+  const [candidatePage, setCandidatePage] = useState<number>(1)
+
+  const CANDIDATES_PER_PAGE = 20
+
+  const totalCandidatePages = useMemo(() => {
+    return Math.max(1, Math.ceil(filteredCandidates.length / CANDIDATES_PER_PAGE))
+  }, [filteredCandidates.length])
+
+  const displayedCandidates = useMemo(() => {
+    if (candidateViewMode === 'top5') {
+      return filteredCandidates.slice(0, 5)
+    }
+    const startIndex = (candidatePage - 1) * CANDIDATES_PER_PAGE
+    return filteredCandidates.slice(startIndex, startIndex + CANDIDATES_PER_PAGE)
+  }, [filteredCandidates, candidateViewMode, candidatePage])
+
   const [evidence, setEvidence] = useState<CandidateEvidence | null>(null)
   const [evidenceStatus, setEvidenceStatus] = useState<'idle' | 'loading' | 'ready' | 'unavailable' | 'failure'>('idle')
   const [evidenceError, setEvidenceError] = useState('')
@@ -832,14 +772,6 @@ function App() {
     setLastExportedFilename(null)
   }
 
-  function handleBackToTriage() {
-    if (hasUnsavedReviewChanges(draftDecision, draftNote, candidateReview)) {
-      if (!window.confirm('You have unsaved review changes. Discard and return to triage?')) {
-        return
-      }
-    }
-    setStageOverride('CANDIDATES')
-  }
 
   async function handleSaveReview(decisionToSave?: ReviewDecision, noteToSave?: string | null) {
     if (!selectedCandidateId) return
@@ -890,13 +822,14 @@ function App() {
     }
   }
 
-  async function handleExportInvestigation() {
+  async function handleExportInvestigation(targetFormat: 'pdf' | 'json') {
     if (!selectedCandidateId) return
     const targetCandidateId = selectedCandidateId
+    setExportFormat(targetFormat)
     setExportStatus('exporting')
     setExportError('')
     try {
-      const { blob, filename } = await exportInvestigation(targetCandidateId, exportFormat)
+      const { blob, filename } = await exportInvestigation(targetCandidateId, targetFormat)
       if (selectedCandidateIdRef.current !== targetCandidateId) {
         return // candidate switched while export was in-flight; discard download
       }
@@ -920,24 +853,136 @@ function App() {
   }
 
   const workflowStages = useMemo<StageRecord[]>(() => {
-    const stageStatusMap: Record<WorkflowStage, StageStatus> = {
-      AOI: status === 'SAVING' || status === 'clearing' ? 'running' : status === 'SAVE_FAILED' || status === 'load-failure' || status === 'validation-failure' ? 'failed' : activeAoiId ? 'complete' : visibleGeometry ? 'ready' : 'ready',
-      IMAGERY: status === 'acquiring' ? 'running' : status === 'imagery-failure' ? 'failed' : status === 'imagery-no-results' ? 'ready' : geometry && (acquisition || acquisitions.length > 0) ? 'complete' : geometry ? 'ready' : 'locked',
-      CHANGE: isOrchestrating || status === 'detecting' ? 'running' : status === 'detection-failure' || status === 'detection-quality-limited' || status === 'temporal-failure' ? 'failed' : temporal ? 'ready' : detection ? 'ready' : (beforeId && afterId && !beforeAfterInvalid && !isChronologicalInvalid) ? 'ready' : (acquisitions.length >= 2 || (acquisitions.length >= 1 && Boolean(acquisition))) ? 'ready' : 'locked',
-      TEMPORAL: isOrchestrating || status === 'analyzing-temporal' ? 'running' : status === 'temporal-failure' ? 'failed' : temporal ? 'ready' : (acquisitions.length >= 2 || detection) ? 'ready' : 'locked',
-      CANDIDATES: candidateStatus === 'loading' ? 'running' : candidateStatus === 'failure' ? 'failed' : selectedCandidateId ? 'complete' : (candidates.length > 0 || candidateStatus === 'ready' || candidateStatus === 'zero') ? 'ready' : temporal ? 'ready' : 'locked',
-      EVIDENCE: evidenceStatus === 'loading' ? 'running' : evidenceStatus === 'failure' || evidenceStatus === 'unavailable' ? 'failed' : evidenceStatus === 'ready' ? 'complete' : selectedCandidateId ? 'ready' : temporal ? 'ready' : 'locked',
-      REVIEW: reviewSaveStatus === 'saving' ? 'running' : reviewSaveStatus === 'error' ? 'failed' : candidateReview?.decision && candidateReview.decision !== 'unreviewed' ? 'complete' : selectedCandidateId ? 'ready' : candidateStatus === 'ready' ? 'ready' : 'locked',
+    const currentIndex = STAGE_ORDER.indexOf(currentStage)
+
+    const baseStatusMap: Record<WorkflowStage, StageStatus> = {
+      AOI: status === 'SAVING' || status === 'clearing'
+        ? 'running'
+        : status === 'SAVE_FAILED' || status === 'load-failure' || status === 'validation-failure'
+          ? 'failed'
+          : activeAoiId
+            ? 'complete'
+            : visibleGeometry
+              ? 'ready'
+              : 'ready',
+      IMAGERY: status === 'acquiring'
+        ? 'running'
+        : status === 'imagery-failure'
+          ? 'failed'
+          : status === 'imagery-no-results'
+            ? 'ready'
+            : geometry && (acquisition || acquisitions.length > 0)
+              ? 'complete'
+              : geometry
+                ? 'ready'
+                : 'locked',
+      CHANGE: isOrchestrating || status === 'detecting'
+        ? 'running'
+        : status === 'detection-failure' || status === 'detection-quality-limited' || status === 'temporal-failure'
+          ? 'failed'
+          : (temporal || detection)
+            ? 'complete'
+            : (beforeId && afterId && !beforeAfterInvalid && !isChronologicalInvalid)
+              ? 'ready'
+              : (acquisitions.length >= 2 || (acquisitions.length >= 1 && Boolean(acquisition)))
+                ? 'ready'
+                : 'locked',
+      TEMPORAL: isOrchestrating || status === 'analyzing-temporal'
+        ? 'running'
+        : status === 'temporal-failure'
+          ? 'failed'
+          : temporal
+            ? 'complete'
+            : (acquisitions.length >= 2 || detection)
+              ? 'ready'
+              : 'locked',
+      CANDIDATES: candidateStatus === 'loading'
+        ? 'running'
+        : candidateStatus === 'failure'
+          ? 'failed'
+          : selectedCandidateId
+            ? 'complete'
+            : (candidates.length > 0 || candidateStatus === 'ready' || candidateStatus === 'zero')
+              ? 'ready'
+              : temporal
+                ? 'ready'
+                : 'locked',
+      EVIDENCE: evidenceStatus === 'loading'
+        ? 'running'
+        : evidenceStatus === 'failure' || evidenceStatus === 'unavailable'
+          ? 'failed'
+          : evidenceStatus === 'ready'
+            ? 'complete'
+            : selectedCandidateId
+              ? 'ready'
+              : temporal
+                ? 'ready'
+                : 'locked',
+      REVIEW: reviewSaveStatus === 'saving'
+        ? 'running'
+        : reviewSaveStatus === 'error'
+          ? 'failed'
+          : candidateReview?.decision && candidateReview.decision !== 'unreviewed'
+            ? 'complete'
+            : selectedCandidateId
+              ? 'ready'
+              : candidateStatus === 'ready'
+                ? 'ready'
+                : 'locked',
+      EXPORT: exportStatus === 'exporting'
+        ? 'running'
+        : exportStatus === 'error'
+          ? 'failed'
+          : exportStatus === 'success' || lastExportedFilename
+            ? 'complete'
+            : (candidateReview?.decision && candidateReview.decision !== 'unreviewed')
+              ? 'ready'
+              : 'locked',
     }
 
-    return STAGE_ORDER.map((stage) => ({
-      status: stageStatusMap[stage],
-      stage,
-      label: STAGE_TITLES[stage],
-    }))
-  }, [acquisition, acquisitions.length, beforeAfterInvalid, isChronologicalInvalid, beforeId, candidateReview, candidateStatus, candidates.length, detection, evidenceStatus, geometry, isOrchestrating, reviewSaveStatus, selectedCandidateId, status, temporal, afterId, activeAoiId, visibleGeometry])
+    return STAGE_ORDER.map((stage, index) => {
+      let finalStatus: StageStatus = baseStatusMap[stage]
 
+      // State semantics:
+      // - Prior stages: if the workflow has already progressed past this stage,
+      //   and it is not currently executing or in an error state,
+      //   it visually communicates completed prior state ('complete').
+      if (index < currentIndex) {
+        if (finalStatus !== 'running' && finalStatus !== 'failed') {
+          finalStatus = 'complete'
+        }
+      }
 
+      return {
+        status: finalStatus,
+        stage,
+        label: STAGE_TITLES[stage],
+      }
+    })
+  }, [
+    currentStage,
+    acquisition,
+    acquisitions.length,
+    beforeAfterInvalid,
+    isChronologicalInvalid,
+    beforeId,
+    candidateReview,
+    candidateStatus,
+    candidates.length,
+    detection,
+    evidenceStatus,
+    geometry,
+    isOrchestrating,
+    reviewSaveStatus,
+    selectedCandidateId,
+    status,
+    temporal,
+    afterId,
+    activeAoiId,
+    visibleGeometry,
+    exportStatus,
+    lastExportedFilename,
+  ])
 
   const activeStageTitle = {
     AOI: 'Define the area you want to investigate',
@@ -947,6 +992,7 @@ function App() {
     CANDIDATES: 'Review candidates',
     EVIDENCE: 'EVIDENCE',
     REVIEW: 'REVIEW',
+    EXPORT: 'Analysis complete',
   }[currentStage]
 
   const dependencyNotes = {
@@ -969,7 +1015,147 @@ function App() {
     CANDIDATES: temporal ? 'Requires: ✓ Change history completed' : 'Requires: completed change history from Stage 04 / CHANGE HISTORY.',
     EVIDENCE: selectedCandidateId ? 'Requires: ✓ candidate selected' : 'Requires: select a candidate in Stage 05 / CANDIDATES.',
     REVIEW: selectedCandidateId ? 'Requires: ✓ candidate selected' : 'Requires: select a candidate in Stage 05 / CANDIDATES.',
+    EXPORT: candidateReview?.decision && candidateReview.decision !== 'unreviewed' ? 'Requires: ✓ Review decision recorded' : 'Requires: record a review decision in Stage 07 / REVIEW first.',
   }
+
+  const usableObservationsCount = useMemo(() => {
+    return acquisitions.filter((a) => a.observation_state === 'usable').length
+  }, [acquisitions])
+
+  const currentCandidateIndex = useMemo(() => {
+    if (!selectedCandidateId) return -1
+    return candidates.findIndex((c) => c.candidate_id === selectedCandidateId)
+  }, [candidates, selectedCandidateId])
+
+  function handlePreviousCandidate() {
+    if (currentCandidateIndex <= 0) return
+    if (hasUnsavedReviewChanges(draftDecision, draftNote, candidateReview)) {
+      if (!window.confirm('You have unsaved review changes. Discard and switch candidate?')) {
+        return
+      }
+    }
+    const prevCandidate = candidates[currentCandidateIndex - 1]
+    if (prevCandidate) {
+      selectCandidate(prevCandidate.candidate_id)
+    }
+  }
+
+  function handleNextCandidate() {
+    if (currentCandidateIndex < 0 || currentCandidateIndex >= candidates.length - 1) return
+    if (hasUnsavedReviewChanges(draftDecision, draftNote, candidateReview)) {
+      if (!window.confirm('You have unsaved review changes. Discard and switch candidate?')) {
+        return
+      }
+    }
+    const nextCandidate = candidates[currentCandidateIndex + 1]
+    if (nextCandidate) {
+      selectCandidate(nextCandidate.candidate_id)
+    }
+  }
+
+  const navigationConfig = useMemo(() => {
+    switch (currentStage) {
+      case 'AOI':
+        return {
+          canPrevious: false,
+          canNext: Boolean(activeAoiId),
+          previousTestId: undefined,
+          nextTestId: 'proceed-to-observations-btn',
+          onPrevious: () => {},
+          onNext: () => setStageOverride('IMAGERY'),
+          nextRequirementHint: !activeAoiId ? 'Save an area to proceed' : undefined,
+        }
+      case 'IMAGERY':
+        return {
+          canPrevious: true,
+          canNext: usableObservationsCount >= 2,
+          previousTestId: 'back-to-area-btn',
+          nextTestId: 'proceed-to-changes-btn',
+          onPrevious: () => setStageOverride('AOI'),
+          onNext: () => setStageOverride('CHANGE'),
+          nextRequirementHint: usableObservationsCount < 2 ? 'At least 2 usable observations required' : undefined,
+        }
+      case 'CHANGE':
+        return {
+          canPrevious: true,
+          canNext: usableObservationsCount >= 2 || Boolean(temporal || detection),
+          previousTestId: 'back-to-observations-btn',
+          nextTestId: 'proceed-to-history-btn',
+          onPrevious: () => setStageOverride('IMAGERY'),
+          onNext: () => setStageOverride('TEMPORAL'),
+          nextRequirementHint: usableObservationsCount < 2 ? 'At least 2 usable observations required' : undefined,
+        }
+      case 'TEMPORAL':
+        return {
+          canPrevious: true,
+          canNext: Boolean(temporal),
+          previousTestId: 'back-to-changes-btn',
+          nextTestId: 'temporal-proceed-candidates-btn',
+          onPrevious: () => setStageOverride('CHANGE'),
+          onNext: () => setStageOverride('CANDIDATES'),
+          nextRequirementHint: !temporal ? 'Requires completed change history' : undefined,
+        }
+      case 'CANDIDATES':
+        return {
+          canPrevious: true,
+          canNext: Boolean(selectedCandidateId),
+          previousTestId: 'back-to-history-btn',
+          nextTestId: 'proceed-to-evidence-btn',
+          nextAriaLabel: 'Inspect candidate evidence',
+          onPrevious: () => setStageOverride('TEMPORAL'),
+          onNext: () => setStageOverride('EVIDENCE'),
+          nextRequirementHint: !selectedCandidateId ? 'Select a candidate to continue' : undefined,
+        }
+      case 'EVIDENCE':
+        return {
+          canPrevious: true,
+          canNext: Boolean(evidence && (evidenceWorkstationState === 'READY' || evidenceWorkstationState === 'QUALITY_LIMITED')),
+          previousTestId: 'back-to-candidates-btn',
+          nextTestId: 'record-review-decision-btn',
+          nextAriaLabel: 'Record review decision',
+          onPrevious: () => setStageOverride('CANDIDATES'),
+          onNext: () => setStageOverride('REVIEW'),
+          nextRequirementHint: evidenceWorkstationState !== 'READY' && evidenceWorkstationState !== 'QUALITY_LIMITED' ? 'Evidence must be loaded' : undefined,
+        }
+      case 'REVIEW':
+        return {
+          canPrevious: true,
+          canNext: Boolean(candidateReview?.decision && candidateReview.decision !== 'unreviewed'),
+          previousTestId: 'back-to-evidence-btn',
+          nextTestId: 'proceed-to-export-btn',
+          onPrevious: () => {
+            if (hasUnsavedReviewChanges(draftDecision, draftNote, candidateReview)) {
+              if (!window.confirm('You have unsaved review changes. Discard and proceed?')) {
+                return
+              }
+            }
+            setStageOverride('EVIDENCE')
+          },
+          onNext: () => setStageOverride('EXPORT'),
+          nextRequirementHint: !(candidateReview?.decision && candidateReview.decision !== 'unreviewed') ? 'Save a review decision to continue' : undefined,
+        }
+      case 'EXPORT':
+        return {
+          canPrevious: true,
+          canNext: false,
+          previousTestId: 'back-to-review-btn',
+          nextTestId: undefined,
+          onPrevious: () => setStageOverride('REVIEW'),
+          onNext: () => {},
+          nextRequirementHint: undefined,
+        }
+      default:
+        return {
+          canPrevious: false,
+          canNext: false,
+          previousTestId: undefined,
+          nextTestId: undefined,
+          onPrevious: () => {},
+          onNext: () => {},
+          nextRequirementHint: undefined,
+        }
+    }
+  }, [currentStage, activeAoiId, usableObservationsCount, temporal, detection, selectedCandidateId, evidence, evidenceWorkstationState, candidateReview, draftDecision, draftNote])
 
   const renderCurrentStage = () => {
     switch (currentStage) {
@@ -1032,27 +1218,7 @@ function App() {
                   <>
                     <button type="button" onClick={beginDrawing}>Draw area</button>
                     {activeAoiId && (
-                      <>
-                        <button type="button" className="button--secondary" onClick={beginEditing}>Edit area</button>
-                        <button
-                          type="button"
-                          className="button--secondary"
-                          data-testid="proceed-to-observations-btn"
-                          onClick={() => setStageOverride('IMAGERY')}
-                        >
-                          Proceed to Observations →
-                        </button>
-                        {candidates.length > 0 && (
-                          <button
-                            type="button"
-                            className="button--secondary"
-                            data-testid="return-to-candidates-btn"
-                            onClick={() => setStageOverride('CANDIDATES')}
-                          >
-                            Return to Candidates →
-                          </button>
-                        )}
-                      </>
+                      <button type="button" className="button--secondary" onClick={beginEditing}>Edit area</button>
                     )}
                   </>
                 ) : (
@@ -1098,7 +1264,6 @@ function App() {
                 <h2>{activeStageTitle}</h2>
               </div>
               <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                <button type="button" className="button--quiet button--mini" data-testid="back-to-area-btn" onClick={() => setStageOverride('AOI')}>← Back to area</button>
                 <span className="panel-index">OBSERVATIONS</span>
               </div>
             </div>
@@ -1171,33 +1336,26 @@ function App() {
                       <strong>1 usable observation available.</strong>
                       <span style={{ display: 'none' }}>1 observation available</span>
                       <small>Two observations are required for change detection.</small>
+                      <p style={{ marginTop: '0.25rem', fontSize: '0.8rem' }}>
+                        At least 2 usable observations are required to compare before and after conditions. Try a wider or different date range to find additional usable observations.
+                      </p>
                     </>
                   ) : usableCount === 0 ? (
                     <>
                       <strong>0 usable observations available.</strong>
                       <small>Two usable observations are required for change detection.</small>
+                      <p style={{ marginTop: '0.25rem', fontSize: '0.8rem' }}>
+                        We found {acquisitions.length} observation{acquisitions.length === 1 ? '' : 's'}, but none meet the image-quality requirements for change detection. Cloud and shadow filtering excluded them. Try a wider or different date range to find additional usable observations.
+                      </p>
                     </>
                   ) : (
                     <span>{usableCount} usable observations available ({acquisitions.length} total acquired).</span>
                   )}
                 </div>
 
-                {acquisitions.length >= 2 && (
-                  <div className="stage-actions" style={{ marginBottom: '1rem' }}>
-                    <button
-                      type="button"
-                      className="button--secondary"
-                      data-testid="proceed-to-changes-btn"
-                      onClick={() => setStageOverride('CHANGE')}
-                    >
-                      Proceed to Changes →
-                    </button>
-                  </div>
-                )}
-
                 <div className="observations-list" aria-label="Acquired observations">
                   <p className="block-label">Acquired observations</p>
-                  {acquisitions.map((item) => {
+                  {acquisitions.filter((item) => item.observation_state === 'usable').map((item) => {
                     const stateInfo = formatObservationState(item.observation_state)
                     const obsDate = new Date(item.acquisition_datetime)
                     const formattedDate = obsDate.toLocaleDateString(undefined, {
@@ -1256,11 +1414,73 @@ function App() {
                     )
                   })}
                 </div>
+
+                {acquisitions.filter((item) => item.observation_state !== 'usable').length > 0 && (
+                  <details className="unusable-observations-section">
+                    <summary>Excluded observations ({acquisitions.filter((item) => item.observation_state !== 'usable').length}) — quality/cloud screening</summary>
+                    <div className="observations-list" style={{ marginTop: '0.5rem' }}>
+                      {acquisitions.filter((item) => item.observation_state !== 'usable').map((item) => {
+                        const stateInfo = formatObservationState(item.observation_state)
+                        const obsDate = new Date(item.acquisition_datetime)
+                        const formattedDate = obsDate.toLocaleDateString(undefined, {
+                          day: '2-digit',
+                          month: 'short',
+                          year: 'numeric',
+                        })
+                        return (
+                          <div
+                            key={item.acquisition_id}
+                            className="observation-card observation-card--unusable"
+                            data-testid={`observation-item-${item.acquisition_id}`}
+                          >
+                            <div className="observation-card__header">
+                              <div>
+                                <small className="observation-card__eyebrow">Actual observation date</small>
+                                <strong className="observation-card__date">{formattedDate}</strong>
+                              </div>
+                              <div className="observation-card__badges">
+                                <span className="obs-badge obs-badge--unusable">
+                                  {stateInfo.label}
+                                </span>
+                                <span className="obs-badge obs-badge--acquired">
+                                  Acquired
+                                </span>
+                              </div>
+                            </div>
+
+                            <div className="observation-card__limitation">
+                              <span className="limitation-label">Quality limitation:</span>
+                              <span className="limitation-reason">{formatObservationQualityReason(item.quality_reason)}</span>
+                              <small className="limitation-note">Unavailable for change detection</small>
+                            </div>
+
+                            <details className="provenance-details-inline">
+                              <summary>Technical details</summary>
+                              <small>Observation ID: #{item.acquisition_id}</small>
+                              <small>STAC Item: {item.item_id}</small>
+                              <span style={{ display: 'none' }}>{item.item_id}</span>
+                              <small>Collection: {item.collection}</small>
+                              {item.quality_reason && (
+                                <small>Persisted reason: {item.quality_reason}</small>
+                              )}
+                              {item.quality_metrics && (
+                                <small>
+                                  Metrics: usable {String((item.quality_metrics as Record<string, unknown>).usable_percentage ?? '')}% · cloud {String((item.quality_metrics as Record<string, unknown>).cloud_percentage ?? '')}% · shadow {String((item.quality_metrics as Record<string, unknown>).shadow_percentage ?? '')}%
+                                </small>
+                              )}
+                            </details>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </details>
+                )}
               </>
             ) : status === 'imagery-no-results' ? (
               <div className="observation-state-block observation-state-block--no-results" role="status">
                 <strong>No matching observations</strong>
-                <p>No suitable satellite observations were found for the selected area and date range.</p>
+                <p>No satellite observations were found for this date range.</p>
+                <small>Try a wider date range to find additional observations.</small>
               </div>
             ) : status === 'imagery-failure' ? (
               <div className="observation-state-block observation-state-block--failed" role="alert">
@@ -1291,10 +1511,7 @@ function App() {
                 <p className="panel-kicker">03 / Changes</p>
                 <h2>{activeStageTitle}</h2>
               </div>
-              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                <button type="button" className="button--quiet button--mini" data-testid="back-to-observations-btn" onClick={() => setStageOverride('IMAGERY')}>← Back to observations</button>
-                <span className="panel-index">CHANGES</span>
-              </div>
+              <span className="panel-index">CHANGES</span>
             </div>
             <p className="panel-copy">Analyze land-surface changes across observation intervals.</p>
 
@@ -1329,16 +1546,6 @@ function App() {
               >
                 {isOrchestrating ? 'Analyzing observations…' : temporal ? 'Re-run automated analysis' : 'Run automated analysis'}
               </button>
-              {!temporal && acquisitions.length >= 2 && (
-                <button
-                  type="button"
-                  className="button--quiet"
-                  data-testid="proceed-to-history-btn"
-                  onClick={() => setStageOverride('TEMPORAL')}
-                >
-                  View Change History →
-                </button>
-              )}
             </div>
 
             <p className="dependency-note">{dependencyNotes.CHANGE}</p>
@@ -1355,24 +1562,6 @@ function App() {
                     <div><span style={{ fontSize: '0.75rem', opacity: 0.8 }}>Change signals: </span><strong>{temporal.signals?.length ?? 0}</strong></div>
                     <div><span style={{ fontSize: '0.75rem', opacity: 0.8 }}>Timeline span: </span><strong>{temporal.temporal_span_days} days</strong></div>
                     <div><span style={{ fontSize: '0.75rem', opacity: 0.8 }}>History state: </span><strong>{TEMPORAL_STATE_LABELS[temporal.state] ?? temporal.state}</strong></div>
-                  </div>
-                  <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.75rem', flexWrap: 'wrap' }}>
-                    <button
-                      type="button"
-                      className="button--secondary button--mini"
-                      data-testid="proceed-to-candidates-btn"
-                      onClick={() => setStageOverride('CANDIDATES')}
-                    >
-                      Inspect Candidates ({candidates.length}) →
-                    </button>
-                    <button
-                      type="button"
-                      className="button--secondary button--mini"
-                      data-testid="view-history-btn"
-                      onClick={() => setStageOverride('TEMPORAL')}
-                    >
-                      View Change History →
-                    </button>
                   </div>
                 </div>
 
@@ -1541,10 +1730,7 @@ function App() {
                 <p className="panel-kicker">04 / Change history</p>
                 <h2>{activeStageTitle}</h2>
               </div>
-              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                <button type="button" className="button--quiet button--mini" data-testid="back-to-changes-btn" onClick={() => setStageOverride('CHANGE')}>← Back to changes</button>
-                <span className="panel-index">CHANGE HISTORY</span>
-              </div>
+              <span className="panel-index">CHANGE HISTORY</span>
             </div>
             <p className="panel-copy">Examine how detected change behaves across observations.</p>
 
@@ -1740,40 +1926,44 @@ function App() {
                   )}
 
                   {signals.length > 0 && (
-                    <div className="temporal-signals-list" role="region" aria-label="Detected change signals">
-                      <p className="block-label">Detected Change Signals</p>
-                      {signals.map((sig) => {
-                        const onsetDate = sig.first_change_datetime || sig.onset_start_datetime
-                        const formattedOnset = onsetDate ? new Date(onsetDate).toLocaleDateString() : null
-                        return (
-                          <div key={sig.signal_id} className="temporal-signal-item" data-testid={`temporal-signal-${sig.signal_id}`}>
-                            <div className="temporal-signal-header">
-                              <span className="signal-state-badge">{TEMPORAL_STATE_LABELS[sig.state] ?? sig.state}</span>
-                              <span className="signal-support-info">{sig.support_count} of {sig.interval_count} intervals supported</span>
-                            </div>
-                            {formattedOnset && (
-                              <p className="signal-onset-info">
-                                First observed in this history: <strong>{formattedOnset}</strong>
-                              </p>
-                            )}
-                            <div className="signal-meta-row">
-                              {sig.quality_support !== undefined && (
-                                <small className="signal-quality-note">
-                                  {((sig.quality_support) * 100).toFixed(0)}% quality support
-                                </small>
+                    <details className="temporal-signals-details info-block" style={{ marginTop: '0.75rem' }}>
+                      <summary style={{ cursor: 'pointer', fontWeight: 600 }}>
+                        Detected Change Signals ({signals.length})
+                      </summary>
+                      <div className="temporal-signals-list" role="region" aria-label="Detected change signals" style={{ marginTop: '0.5rem' }}>
+                        {signals.map((sig) => {
+                          const onsetDate = sig.first_change_datetime || sig.onset_start_datetime
+                          const formattedOnset = onsetDate ? new Date(onsetDate).toLocaleDateString() : null
+                          return (
+                            <div key={sig.signal_id} className="temporal-signal-item" data-testid={`temporal-signal-${sig.signal_id}`}>
+                              <div className="temporal-signal-header">
+                                <span className="signal-state-badge">{TEMPORAL_STATE_LABELS[sig.state] ?? sig.state}</span>
+                                <span className="signal-support-info">{sig.support_count} of {sig.interval_count} intervals supported</span>
+                              </div>
+                              {formattedOnset && (
+                                <p className="signal-onset-info">
+                                  First observed in this history: <strong>{formattedOnset}</strong>
+                                </p>
                               )}
-                              {sig.seasonal_interpretation && (
-                                <small className="signal-seasonal-note">
-                                  {sig.seasonal_interpretation === 'seasonal_compatible'
-                                    ? 'Seasonally comparable'
-                                    : 'Less seasonally comparable'}
-                                </small>
-                              )}
+                              <div className="signal-meta-row">
+                                {sig.quality_support !== undefined && (
+                                  <small className="signal-quality-note">
+                                    {((sig.quality_support) * 100).toFixed(0)}% quality support
+                                  </small>
+                                )}
+                                {sig.seasonal_interpretation && (
+                                  <small className="signal-seasonal-note">
+                                    {sig.seasonal_interpretation === 'seasonal_compatible'
+                                      ? 'Seasonally comparable'
+                                      : 'Less seasonally comparable'}
+                                  </small>
+                                )}
+                              </div>
                             </div>
-                          </div>
-                        )
-                      })}
-                    </div>
+                          )
+                        })}
+                      </div>
+                    </details>
                   )}
 
                   <details className="provenance-block">
@@ -1792,26 +1982,6 @@ function App() {
                       )}
                     </div>
                   </details>
-
-                  <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem', flexWrap: 'wrap' }}>
-                    <button
-                      type="button"
-                      className="button--secondary button--mini"
-                      data-testid="temporal-proceed-candidates-btn"
-                      onClick={() => setStageOverride('CANDIDATES')}
-                    >
-                      Inspect Candidates ({candidates.length}) →
-                    </button>
-                    <button
-                      type="button"
-                      className="button--secondary button--mini"
-                      data-testid="temporal-rerun-btn"
-                      onClick={handleRunOrchestration}
-                      disabled={isOrchestrating}
-                    >
-                      {isOrchestrating ? 'Re-analyzing…' : 'Re-run analysis'}
-                    </button>
-                  </div>
                 </div>
               )
             })()}
@@ -1826,15 +1996,19 @@ function App() {
                 <p className="panel-kicker">05 / Candidates</p>
                 <h2>{activeStageTitle}</h2>
               </div>
-              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                <button type="button" className="button--quiet button--mini" data-testid="back-to-area-btn" onClick={() => setStageOverride('AOI')}>← Back to area</button>
-                <button type="button" className="button--quiet button--mini" data-testid="back-to-history-btn" onClick={() => setStageOverride('TEMPORAL')}>← Back to change history</button>
-                <span className="panel-index">CANDIDATES</span>
-              </div>
+              <span className="panel-index">CANDIDATES</span>
             </div>
             <p className="panel-copy">Review detected changes and select a candidate for investigation.</p>
             <div className="stage-form">
-              <button type="button" className="button--secondary" onClick={handleTriage} disabled={!temporal || candidateStatus === 'loading'}>Triage temporal signals</button>
+              <button
+                type="button"
+                className="button--secondary"
+                onClick={handleTriage}
+                disabled={!temporal || candidateStatus === 'loading'}
+                aria-label="Triage temporal signals"
+              >
+                Generate candidates
+              </button>
             </div>
             <p className="dependency-note">{dependencyNotes.CANDIDATES}</p>
             {candidateStatus === 'loading' && <p className="candidate-message">Generating candidates from evaluated change history…</p>}
@@ -1887,9 +2061,32 @@ function App() {
                 </label>
               </div>
             )}
-            {filteredCandidates.length > 0 && (
+            {candidates.length > 0 && (
+              <div className="candidate-views-toggle" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.75rem', marginBottom: '0.5rem' }}>
+                <span style={{ fontSize: '0.85rem', fontWeight: 600 }}>
+                  {candidateViewMode === 'top5' ? 'Top 5 Candidates' : `All Candidates (${filteredCandidates.length})`}
+                </span>
+                <button
+                  type="button"
+                  className="button--quiet button--mini"
+                  data-testid="toggle-candidate-view-mode-btn"
+                  onClick={() => {
+                    setCandidateViewMode((m) => (m === 'top5' ? 'all' : 'top5'))
+                    setCandidatePage(1)
+                  }}
+                >
+                  {candidateViewMode === 'top5' ? 'View all candidates →' : '← View Top 5 only'}
+                </button>
+              </div>
+            )}
+            {candidateViewMode === 'top5' && candidates.length > 0 && (
+              <p className="top5-explanation" style={{ fontSize: '0.8rem', color: '#888', margin: '0 0 0.5rem 0' }}>
+                Showing the 5 highest-ranked candidates first. Ranking uses the existing operational evidence score.
+              </p>
+            )}
+            {displayedCandidates.length > 0 && (
               <div className="candidate-list">
-                {filteredCandidates.map((candidate) => (
+                {displayedCandidates.map((candidate) => (
                   <button
                     key={candidate.candidate_id}
                     type="button"
@@ -1907,22 +2104,34 @@ function App() {
                 ))}
               </div>
             )}
+            {candidateViewMode === 'all' && totalCandidatePages > 1 && (
+              <div className="candidate-pagination" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.5rem' }}>
+                <button
+                  type="button"
+                  className="button--quiet button--mini"
+                  disabled={candidatePage <= 1}
+                  onClick={() => setCandidatePage((p) => Math.max(1, p - 1))}
+                >
+                  ← Previous Page
+                </button>
+                <span style={{ fontSize: '0.8rem' }}>Page {candidatePage} of {totalCandidatePages}</span>
+                <button
+                  type="button"
+                  className="button--quiet button--mini"
+                  disabled={candidatePage >= totalCandidatePages}
+                  onClick={() => setCandidatePage((p) => Math.min(totalCandidatePages, p + 1))}
+                >
+                  Next Page →
+                </button>
+              </div>
+            )}
             {candidates.length > 0 && filteredCandidates.length === 0 && (
               <p className="candidate-message">No candidates match the selected triage filters.</p>
             )}
             {!selectedCandidateId && (
               <div className="candidate-selection-placeholder" style={{ marginTop: '1rem' }}>
-                {candidates.length > 0 && (
-                  <p>Select a candidate from the list above to view detailed assessment and investigate evidence.</p>
-                )}
-                <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
-                  <button type="button" className="button--quiet button--mini" onClick={() => setStageOverride('EVIDENCE')} data-testid="inspect-evidence-unselected-btn">
-                    Inspect evidence (no candidate selected) →
-                  </button>
-                  <button type="button" className="button--quiet button--mini" onClick={() => setStageOverride('REVIEW')} data-testid="inspect-review-unselected-btn">
-                    Inspect review (no candidate selected) →
-                  </button>
-                </div>
+                <p>Select a candidate to continue.</p>
+                <p className="subtle-note">Select a candidate from the list above to inspect its assessment and evidence.</p>
               </div>
             )}
             {selectedCandidateId && (() => {
@@ -2029,7 +2238,6 @@ function App() {
                   <div className="candidate-review-status-row">
                     <span className="candidate-review-status-tag">Review Status: <strong>{selectedCandidate.review_state}</strong></span>
                   </div>
-                  <button type="button" className="button--secondary" style={{ marginTop: '0.4rem' }} onClick={() => setStageOverride('EVIDENCE')}>Inspect candidate evidence</button>
                 </div>
               )
             })()}
@@ -2053,11 +2261,7 @@ function App() {
                 <p className="panel-kicker">06 / Evidence</p>
                 <h2>{activeStageTitle}</h2>
               </div>
-              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                <button type="button" className="button--quiet button--mini" data-testid="back-to-area-btn" onClick={() => setStageOverride('AOI')}>← Back to area</button>
-                <button type="button" className="button--quiet button--mini" onClick={handleBackToTriage}>← Back to triage</button>
-                <span className="panel-index">EVIDENCE</span>
-              </div>
+              <span className="panel-index">EVIDENCE</span>
             </div>
             <p className="panel-copy">Inspect the selected candidate's supporting satellite evidence, observations, and detected change.</p>
 
@@ -2584,32 +2788,6 @@ function App() {
 
               </div>
             )}
-
-            {selectedCandidateId && evidenceWorkstationState !== 'NO_CANDIDATE' && evidenceWorkstationState !== 'LOADING' && (
-              <div className="evidence-workstation-review-container">
-                <div className="stage-actions" style={{ marginTop: '1.25rem', marginBottom: '1.25rem' }}>
-                  <button
-                    type="button"
-                    className="button--primary"
-                    onClick={() => setStageOverride('REVIEW')}
-                    data-testid="record-review-decision-btn"
-                  >
-                    Record review decision →
-                  </button>
-                </div>
-
-                {/* 9. Export Candidate Snapshot Card */}
-                <ExportInvestigationCard
-                  exportFormat={exportFormat}
-                  setExportFormat={setExportFormat}
-                  exportStatus={exportStatus}
-                  exportError={exportError}
-                  lastExportedFilename={lastExportedFilename}
-                  selectedCandidateId={selectedCandidateId}
-                  onExport={() => void handleExportInvestigation()}
-                />
-              </div>
-            )}
           </>
         )
       }
@@ -2632,12 +2810,7 @@ function App() {
                 <p className="panel-kicker">07 / Review</p>
                 <h2>{activeStageTitle}</h2>
               </div>
-              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                <button type="button" className="button--quiet button--mini" data-testid="back-to-area-btn" onClick={() => setStageOverride('AOI')}>← Back to area</button>
-                <button type="button" className="button--quiet button--mini" onClick={() => setStageOverride('EVIDENCE')}>← Back to evidence</button>
-                <button type="button" className="button--quiet button--mini" onClick={handleBackToTriage}>← Back to triage</button>
-                <span className="panel-index">REVIEW</span>
-              </div>
+              <span className="panel-index">REVIEW</span>
             </div>
             <p className="panel-copy">Record analyst review decision for the selected candidate.</p>
 
@@ -2741,6 +2914,30 @@ function App() {
                     )}
                   </div>
 
+                  {candidates.length > 1 && (
+                    <div className="candidate-queue-nav" aria-label="Candidate queue navigation" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.75rem', marginBottom: '0.75rem' }}>
+                      <button
+                        type="button"
+                        className="button--quiet button--mini"
+                        onClick={handlePreviousCandidate}
+                        disabled={currentCandidateIndex <= 0}
+                      >
+                        ← Previous Candidate
+                      </button>
+                      <span className="candidate-queue-index" style={{ fontSize: '0.8rem' }}>
+                        Candidate {currentCandidateIndex >= 0 ? currentCandidateIndex + 1 : 0} of {candidates.length}
+                      </span>
+                      <button
+                        type="button"
+                        className="button--quiet button--mini"
+                        onClick={handleNextCandidate}
+                        disabled={currentCandidateIndex < 0 || currentCandidateIndex >= candidates.length - 1}
+                      >
+                        Next Candidate →
+                      </button>
+                    </div>
+                  )}
+
                   {evidenceWorkstationState === 'QUALITY_LIMITED' && (
                     <div className="review-advisory review-advisory--warning" role="alert" data-testid="review-quality-advisory">
                       ⚠ Advisory: Candidate evidence has material observation quality limitations. Review decisions may be recorded, but physical change evidence reliability is reduced.
@@ -2842,7 +3039,6 @@ function App() {
                   <div className="info-block review-evidence-summary" data-testid="review-evidence-summary">
                     <div className="candidate-detail-header">
                       <h4>Supporting Evidence Context</h4>
-                      <button type="button" className="button--quiet button--mini" onClick={() => setStageOverride('EVIDENCE')}>Inspect full evidence →</button>
                     </div>
                     <p className="scientific-distinction-note">
                       Detected change represents the derived land-surface change signal (ΔNDVI), not a satellite observation.
@@ -2873,19 +3069,121 @@ function App() {
                     </div>
                   </div>
                 )}
-
-                {/* 5. Export Candidate Snapshot Card */}
-                <ExportInvestigationCard
-                  exportFormat={exportFormat}
-                  setExportFormat={setExportFormat}
-                  exportStatus={exportStatus}
-                  exportError={exportError}
-                  lastExportedFilename={lastExportedFilename}
-                  selectedCandidateId={selectedCandidateId}
-                  onExport={() => void handleExportInvestigation()}
-                />
               </div>
             )}
+          </>
+        )
+      }
+      case 'EXPORT': {
+        const candidate = candidates.find((c) => c.candidate_id === selectedCandidateId)
+        const dateRangeStr = startDatetime && endDatetime
+          ? `${new Date(startDatetime).toLocaleDateString()} – ${new Date(endDatetime).toLocaleDateString()}`
+          : 'Configured observation period'
+
+        return (
+          <>
+            <div className="panel-heading">
+              <div>
+                <p className="panel-kicker">08 / Export</p>
+                <h2>Analysis complete</h2>
+              </div>
+              <span className="panel-index">EXPORT</span>
+            </div>
+            <p className="panel-copy">
+              Your change-detection results are ready to export.
+            </p>
+
+            <div className="export-summary-card" data-testid="investigation-export-section">
+              <div className="export-context-grid">
+                <div className="export-context-item">
+                  <span className="context-label">Selected Area</span>
+                  <strong className="context-value">#{activeAoiId ?? '1'} (Karnataka)</strong>
+                </div>
+                <div className="export-context-item">
+                  <span className="context-label">Observation Period</span>
+                  <strong className="context-value">{dateRangeStr}</strong>
+                </div>
+                <div className="export-context-item">
+                  <span className="context-label">Selected Candidate</span>
+                  <strong className="context-value">{candidate ? `#${candidate.rank} (${candidate.priority} priority)` : 'N/A'}</strong>
+                </div>
+                <div className="export-context-item">
+                  <span className="context-label">Review Decision</span>
+                  <strong className="context-value" data-testid="export-review-decision">
+                    {candidateReview?.decision ? (candidateReview.decision.charAt(0).toUpperCase() + candidateReview.decision.slice(1)) : 'Unreviewed'}
+                  </strong>
+                </div>
+              </div>
+
+              {candidateReview?.note && (
+                <div className="export-note-block" style={{ marginTop: '0.6rem', background: '#fafcfb', border: '1px solid #dce5e1', padding: '0.5rem', borderRadius: '4px' }}>
+                  <span className="context-label" style={{ fontSize: '0.72rem', fontWeight: 700, color: '#687973', textTransform: 'uppercase', letterSpacing: '0.04em', display: 'block' }}>Analyst Note</span>
+                  <p className="export-analyst-note" style={{ margin: '0.2rem 0 0 0', fontSize: '0.82rem', color: '#1b3028' }}>{candidateReview.note}</p>
+                </div>
+              )}
+
+              <div className="export-formats">
+                <div className="export-format-card">
+                  <h4>PDF Report</h4>
+                  <p>
+                    Human-readable report containing the selected change result, evidence, review state, and provenance.
+                  </p>
+                  <button
+                    type="button"
+                    className="button--primary"
+                    disabled={exportStatus === 'exporting' || !selectedCandidateId}
+                    onClick={() => void handleExportInvestigation('pdf')}
+                    data-testid="download-pdf-report-btn"
+                  >
+                    {exportStatus === 'exporting' && exportFormat === 'pdf' ? 'Generating PDF...' : 'Download PDF Report'}
+                  </button>
+                </div>
+
+                <div className="export-format-card">
+                  <h4>JSON Data Package</h4>
+                  <p>
+                    Machine-readable export containing the structured analysis data and provenance.
+                  </p>
+                  <button
+                    type="button"
+                    className="button--secondary"
+                    disabled={exportStatus === 'exporting' || !selectedCandidateId}
+                    onClick={() => void handleExportInvestigation('json')}
+                    data-testid="download-json-data-btn"
+                  >
+                    {exportStatus === 'exporting' && exportFormat === 'json' ? 'Generating JSON...' : 'Download JSON Data'}
+                  </button>
+                </div>
+              </div>
+
+              <div style={{ marginTop: '0.75rem' }}>
+                {exportStatus === 'exporting' && (
+                  <span className="export-status-text" role="status" data-testid="export-loading-indicator">
+                    Generating {exportFormat.toUpperCase()} snapshot...
+                  </span>
+                )}
+                {exportStatus === 'success' && (
+                  <span className="export-status-text export-status-text--success" role="status" data-testid="export-success-message">
+                    ✓ Downloaded {lastExportedFilename ?? `${exportFormat.toUpperCase()} report`}
+                  </span>
+                )}
+                {exportStatus === 'error' && (
+                  <span className="export-status-text export-status-text--error" role="alert" data-testid="export-error-message">
+                    {exportError || 'Export failed'}
+                  </span>
+                )}
+              </div>
+
+              <details className="provenance-block" style={{ marginTop: '1rem' }}>
+                <summary>Export provenance &amp; technical metadata</summary>
+                <div className="provenance-details-grid">
+                  <div><span>Candidate ID:</span> <code>{selectedCandidateId}</code></div>
+                  <div><span>Analysis ID:</span> <code>{candidate?.analysis_id ?? 'N/A'}</code></div>
+                  <div><span>Signal ID:</span> <code>{candidate?.signal_id ?? 'N/A'}</code></div>
+                  <div><span>Review Timestamp:</span> <code>{candidateReview?.updated_at ?? candidateReview?.created_at ?? 'N/A'}</code></div>
+                </div>
+              </details>
+            </div>
           </>
         )
       }
@@ -2973,6 +3271,17 @@ function App() {
 
           {error && <p className="error" role="alert">{error}</p>}
           {renderCurrentStage()}
+          <WorkflowNavigation
+            currentStage={currentStage}
+            canPrevious={navigationConfig.canPrevious}
+            canNext={navigationConfig.canNext}
+            onPrevious={navigationConfig.onPrevious}
+            onNext={navigationConfig.onNext}
+            previousTestId={navigationConfig.previousTestId}
+            nextTestId={navigationConfig.nextTestId}
+            nextRequirementHint={navigationConfig.nextRequirementHint}
+            nextAriaLabel={navigationConfig.nextAriaLabel}
+          />
         </aside>
       </section>
     </main>

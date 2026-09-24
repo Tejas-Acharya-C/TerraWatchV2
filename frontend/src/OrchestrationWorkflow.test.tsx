@@ -273,8 +273,10 @@ describe('TerraWatch V2 — Phase 19C End-to-End Orchestration Workflow', () => 
     expect(candidatesRailStep).toHaveClass('workflow-step--ready')
     expect(screen.queryByRole('button', { name: /05 CANDIDATES/i })).not.toBeInTheDocument()
 
-    // Click Inspect Candidates
-    fireEvent.click(screen.getByTestId('proceed-to-candidates-btn'))
+    // Advance sequentially: Stage 03 -> Stage 04 -> Stage 05
+    fireEvent.click(screen.getByTestId('proceed-to-history-btn'))
+    await waitFor(() => expect(screen.getByText('04 / Change history')).toBeInTheDocument())
+    fireEvent.click(screen.getByTestId('temporal-proceed-candidates-btn'))
     await waitFor(() => expect(screen.getByText('05 / Candidates')).toBeInTheDocument())
     expect(screen.getByText('#1 / high priority')).toBeInTheDocument()
   })

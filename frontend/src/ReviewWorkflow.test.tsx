@@ -463,9 +463,10 @@ describe('Stage 07 / REVIEW Workflow (Phase 9)', () => {
     fireEvent.click(runBtn)
     await waitFor(() => expect(screen.getByTestId('orchestration-summary')).toBeInTheDocument())
 
-    // Navigate to Stage 05 CANDIDATES
-    const candidatesBtn = await screen.findByTestId('proceed-to-candidates-btn')
-    fireEvent.click(candidatesBtn)
+    // Navigate sequentially: Stage 03 -> Stage 04 -> Stage 05
+    fireEvent.click(screen.getByTestId('proceed-to-history-btn'))
+    await waitFor(() => expect(screen.getByText('04 / Change history')).toBeInTheDocument())
+    fireEvent.click(screen.getByTestId('temporal-proceed-candidates-btn'))
     await waitFor(() => expect(screen.getByText('05 / Candidates')).toBeInTheDocument())
   }
 
@@ -474,7 +475,7 @@ describe('Stage 07 / REVIEW Workflow (Phase 9)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Triage temporal signals' }))
     await waitFor(() => expect(screen.getByText('#1 / urgent priority')).toBeInTheDocument())
     fireEvent.click(screen.getByText('#1 / urgent priority'))
-    fireEvent.click(screen.getByRole('button', { name: 'Inspect candidate evidence' }))
+    fireEvent.click(screen.getByTestId('proceed-to-evidence-btn'))
     await waitFor(() => expect(screen.getByText('06 / Evidence')).toBeInTheDocument())
     fireEvent.click(screen.getByTestId('record-review-decision-btn'))
     await waitFor(() => expect(screen.getByText('07 / Review')).toBeInTheDocument())
@@ -494,25 +495,17 @@ describe('Stage 07 / REVIEW Workflow (Phase 9)', () => {
     expect(screen.getByText('Record analyst review decision for the selected candidate.')).toBeInTheDocument()
   })
 
-  it('3. No candidate selected produces clear prerequisite state, no auto-selection, and navigation to CANDIDATES', async () => {
+  it('3. No candidate selected produces clear prerequisite state, no auto-selection, and disabled Next', async () => {
     await navigateToCandidatesWorkflow()
     fireEvent.click(screen.getByRole('button', { name: 'Triage temporal signals' }))
     await waitFor(() => expect(screen.getByText('#1 / urgent priority')).toBeInTheDocument())
 
-    // Direct navigation to Stage 07 without selecting a candidate
-    fireEvent.click(screen.getByTestId('inspect-review-unselected-btn'))
-
-    await waitFor(() => {
-      expect(screen.getByTestId('no-candidate-review-state')).toBeInTheDocument()
-      expect(screen.getByText('No candidate is currently selected for review. Select a candidate in Stage 05 / CANDIDATES.')).toBeInTheDocument()
-    })
-
-    // No auto-selected candidate header
+    // No auto-selected candidate, Next button is disabled
+    const nextBtn = screen.getByTestId('proceed-to-evidence-btn')
+    expect(nextBtn).toBeDisabled()
+    expect(screen.getByTestId('map-selected-id')).toHaveTextContent('none')
+    expect(screen.getByText('Select a candidate to continue.')).toBeInTheDocument()
     expect(screen.queryByRole('heading', { level: 4, name: /Candidate #/i })).not.toBeInTheDocument()
-
-    // Navigation button returns to CANDIDATES
-    fireEvent.click(screen.getByRole('button', { name: 'Select candidate in Stage 05 / CANDIDATES' }))
-    await waitFor(() => expect(screen.getByText('05 / Candidates')).toBeInTheDocument())
   })
 
   it('4. Candidate selected with no persisted review shows UNREVIEWED and three canonical decisions', async () => {
@@ -598,12 +591,14 @@ describe('Stage 07 / REVIEW Workflow (Phase 9)', () => {
     await navigateToReviewForCandidateA()
     await waitFor(() => expect(screen.getByTestId('current-review-decision')).toHaveTextContent('ACCEPTED'))
 
-    // Return to triage and select candidate B
-    fireEvent.click(screen.getByRole('button', { name: '← Back to triage' }))
+    // Return to Stage 05 and select candidate B
+    fireEvent.click(screen.getByTestId('back-to-evidence-btn'))
+    await waitFor(() => expect(screen.getByText('06 / Evidence')).toBeInTheDocument())
+    fireEvent.click(screen.getByTestId('back-to-candidates-btn'))
     await waitFor(() => expect(screen.getByText('05 / Candidates')).toBeInTheDocument())
 
     fireEvent.click(screen.getByText('#2 / normal priority'))
-    fireEvent.click(screen.getByRole('button', { name: 'Inspect candidate evidence' }))
+    fireEvent.click(screen.getByTestId('proceed-to-evidence-btn'))
     await waitFor(() => expect(screen.getByText('06 / Evidence')).toBeInTheDocument())
     fireEvent.click(screen.getByTestId('record-review-decision-btn'))
     await waitFor(() => expect(screen.getByText('07 / Review')).toBeInTheDocument())
@@ -645,7 +640,7 @@ describe('Stage 07 / REVIEW Workflow (Phase 9)', () => {
 
     // Immediately switch to Candidate B before A resolves
     fireEvent.click(screen.getByText('#2 / normal priority'))
-    fireEvent.click(screen.getByRole('button', { name: 'Inspect candidate evidence' }))
+    fireEvent.click(screen.getByTestId('proceed-to-evidence-btn'))
     await waitFor(() => expect(screen.getByText('06 / Evidence')).toBeInTheDocument())
     fireEvent.click(screen.getByTestId('record-review-decision-btn'))
     await waitFor(() => expect(screen.getByText('07 / Review')).toBeInTheDocument())
@@ -703,8 +698,19 @@ describe('Stage 07 / REVIEW Workflow (Phase 9)', () => {
     await navigateToReviewForCandidateA()
     await waitFor(() => expect(screen.getByTestId('current-review-decision')).toHaveTextContent('ACCEPTED'))
 
-    // Invalidate upstream by starting drawing in AOI
+    // Invalidate upstream by navigating back sequentially to Area and drawing area
+    fireEvent.click(screen.getByTestId('back-to-evidence-btn'))
+    await waitFor(() => expect(screen.getByText('06 / Evidence')).toBeInTheDocument())
+    fireEvent.click(screen.getByTestId('back-to-candidates-btn'))
+    await waitFor(() => expect(screen.getByText('05 / Candidates')).toBeInTheDocument())
+    fireEvent.click(screen.getByTestId('back-to-history-btn'))
+    await waitFor(() => expect(screen.getByText('04 / Change history')).toBeInTheDocument())
+    fireEvent.click(screen.getByTestId('back-to-changes-btn'))
+    await waitFor(() => expect(screen.getByText('03 / Changes')).toBeInTheDocument())
+    fireEvent.click(screen.getByTestId('back-to-observations-btn'))
+    await waitFor(() => expect(screen.getByText('02 / Observations')).toBeInTheDocument())
     fireEvent.click(screen.getByTestId('back-to-area-btn'))
+    await waitFor(() => expect(screen.getByText('01 / Area')).toBeInTheDocument())
     fireEvent.click(screen.getByRole('button', { name: 'Draw area' }))
 
     // Active review UI is cleared and Stage 07 is locked
@@ -754,11 +760,12 @@ describe('Stage 07 / REVIEW Workflow (Phase 9)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Triage temporal signals' }))
     await waitFor(() => expect(screen.getByText('#1 / urgent priority')).toBeInTheDocument())
     fireEvent.click(screen.getByText('#1 / urgent priority'))
-    fireEvent.click(screen.getByRole('button', { name: 'Inspect candidate evidence' }))
+    fireEvent.click(screen.getByTestId('proceed-to-evidence-btn'))
     await waitFor(() => expect(screen.getByText('06 / Evidence')).toBeInTheDocument())
 
     const reviewBtn = screen.getByTestId('record-review-decision-btn')
-    expect(reviewBtn).toHaveTextContent(/Record review decision/i)
+    expect(reviewBtn).toHaveAttribute('aria-label', 'Record review decision')
+    expect(reviewBtn).toHaveTextContent('Next →')
     fireEvent.click(reviewBtn)
 
     await waitFor(() => {

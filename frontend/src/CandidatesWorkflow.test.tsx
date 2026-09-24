@@ -354,8 +354,10 @@ describe('Stage 05 / CANDIDATES Simplification (Phase 7)', () => {
     fireEvent.click(runBtn)
     await waitFor(() => expect(screen.getByTestId('orchestration-summary')).toBeInTheDocument())
 
-    // Navigate to Stage 05 CANDIDATES via in-stage button
-    fireEvent.click(screen.getByTestId('proceed-to-candidates-btn'))
+    // Navigate sequentially: Stage 03 -> Stage 04 -> Stage 05
+    fireEvent.click(screen.getByTestId('proceed-to-history-btn'))
+    await waitFor(() => expect(screen.getByText('04 / Change history')).toBeInTheDocument())
+    fireEvent.click(screen.getByTestId('temporal-proceed-candidates-btn'))
     await waitFor(() => expect(screen.getByText('05 / Candidates')).toBeInTheDocument())
   }
 
@@ -609,7 +611,13 @@ describe('Stage 05 / CANDIDATES Simplification (Phase 7)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Triage temporal signals' }))
     await waitFor(() => expect(screen.getByText('#1 / urgent priority')).toBeInTheDocument())
 
-    // Go back to Stage 01 and start drawing new area
+    // Go back sequentially to Stage 01 and start drawing new area
+    fireEvent.click(screen.getByTestId('back-to-history-btn'))
+    await waitFor(() => expect(screen.getByText('04 / Change history')).toBeInTheDocument())
+    fireEvent.click(screen.getByTestId('back-to-changes-btn'))
+    await waitFor(() => expect(screen.getByText('03 / Changes')).toBeInTheDocument())
+    fireEvent.click(screen.getByTestId('back-to-observations-btn'))
+    await waitFor(() => expect(screen.getByText('02 / Observations')).toBeInTheDocument())
     fireEvent.click(screen.getByTestId('back-to-area-btn'))
     await waitFor(() => expect(screen.getByText('01 / Area')).toBeInTheDocument())
 
@@ -629,7 +637,15 @@ describe('Stage 05 / CANDIDATES Simplification (Phase 7)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Inspect candidate evidence' }))
     await waitFor(() => expect(screen.getByText('06 / Evidence')).toBeInTheDocument())
 
-    // Go to Stage 01 and start drawing new area
+    // Go back sequentially to Stage 01 and start drawing new area
+    fireEvent.click(screen.getByTestId('back-to-candidates-btn'))
+    await waitFor(() => expect(screen.getByText('05 / Candidates')).toBeInTheDocument())
+    fireEvent.click(screen.getByTestId('back-to-history-btn'))
+    await waitFor(() => expect(screen.getByText('04 / Change history')).toBeInTheDocument())
+    fireEvent.click(screen.getByTestId('back-to-changes-btn'))
+    await waitFor(() => expect(screen.getByText('03 / Changes')).toBeInTheDocument())
+    fireEvent.click(screen.getByTestId('back-to-observations-btn'))
+    await waitFor(() => expect(screen.getByText('02 / Observations')).toBeInTheDocument())
     fireEvent.click(screen.getByTestId('back-to-area-btn'))
     await waitFor(() => expect(screen.getByText('01 / Area')).toBeInTheDocument())
 
@@ -664,12 +680,12 @@ describe('Stage 05 / CANDIDATES Simplification (Phase 7)', () => {
     await waitFor(() => expect(screen.getByText('#1 / urgent priority')).toBeInTheDocument())
     fireEvent.click(screen.getByText('#1 / urgent priority'))
 
-    // Navigate to Stage 01 AREA via in-stage button
-    fireEvent.click(screen.getByTestId('back-to-area-btn'))
-    await waitFor(() => expect(screen.getByText('01 / Area')).toBeInTheDocument())
+    // Navigate to Stage 04 CHANGE HISTORY via Previous button
+    fireEvent.click(screen.getByTestId('back-to-history-btn'))
+    await waitFor(() => expect(screen.getByText('04 / Change history')).toBeInTheDocument())
 
-    // Return to Stage 05 CANDIDATES via in-stage button: selected candidate remains selected
-    fireEvent.click(screen.getByTestId('return-to-candidates-btn'))
+    // Return to Stage 05 CANDIDATES via Next button: selected candidate remains selected
+    fireEvent.click(screen.getByTestId('temporal-proceed-candidates-btn'))
     await waitFor(() => expect(screen.getByText('Candidate Assessment')).toBeInTheDocument())
     expect(screen.getByText('analysis-42-signal-101')).toBeInTheDocument()
   })
